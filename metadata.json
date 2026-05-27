@@ -1,0 +1,6 @@
+{
+  "name": "Triângulo Estúdio Fotoclub",
+  "description": "Plataforma e landing page para o Triângulo Estúdio Fotoclub, com catálogo de estúdios, portfólio de ensaios e simulação de reservas de alto nível.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
