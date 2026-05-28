@@ -80,6 +80,8 @@ export default function Testimonials() {
                 <img
                   src={TESTIMONIALS[currentIndex].avatarUrl}
                   alt={TESTIMONIALS[currentIndex].name}
+                  loading="lazy"
+                  decoding="async"
                   referrerPolicy="no-referrer"
                   className="w-12 h-12 rounded-full object-cover border border-white/10 shadow"
                 />

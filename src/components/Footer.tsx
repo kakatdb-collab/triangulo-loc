@@ -99,12 +99,12 @@ export default function Footer() {
                 <div>
                   <span className="block font-semibold text-white">WhatsApp Direct:</span>
                   <a 
-                    href="https://wa.me/5511999999999" 
+                    href="https://api.whatsapp.com/send?phone=5511961959349&text=Ol%C3%A1%2C%20gostaria%20de%20fazer%20um%20or%C3%A7amento%20loca%C3%A7%C3%A3o%20do%20estudio.%20" 
                     target="_blank" 
                     rel="noopener noreferrer" 
                     className="text-zinc-400 text-xs hover:text-[#d93838] transition-colors font-mono"
                   >
-                    +55 (11) 99999-9999
+                    +55 (11) 96195-9349
                   </a>
                 </div>
               </li>

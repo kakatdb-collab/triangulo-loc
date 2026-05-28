@@ -13,7 +13,8 @@ import {
   ChevronLeft,
   Sparkles, 
   Camera, 
-  Image as ImageIcon 
+  Image as ImageIcon,
+  FileDown
 } from "lucide-react";
 import { STUDIO_SPACES, ASSETS } from "../data";
 
@@ -197,6 +198,7 @@ export default function Spaces({ onSelectSpace }: SpacesProps) {
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.4 }}
                   referrerPolicy="no-referrer"
+                  decoding="async"
                   className="w-full h-full object-cover"
                 />
               </AnimatePresence>
@@ -265,6 +267,8 @@ export default function Spaces({ onSelectSpace }: SpacesProps) {
                   <img
                     src={photo.url}
                     alt={`Thumbnail ${index + 1}`}
+                    loading="lazy"
+                    decoding="async"
                     referrerPolicy="no-referrer"
                     className="w-full h-full object-cover"
                   />
@@ -391,6 +395,38 @@ export default function Spaces({ onSelectSpace }: SpacesProps) {
             className="w-full md:w-auto bg-brand-red hover:bg-red-700 text-white font-mono text-xs uppercase tracking-wider py-3 px-6 rounded text-center transition-all duration-300 cursor-pointer active:scale-95 shadow-md shadow-brand-red/10 shrink-0"
           >
             Faça um Orçamento Direto
+          </a>
+        </div>
+
+        {/* Manual Download Info Block */}
+        <div className="mt-6 bg-stone-950 p-6 sm:p-8 rounded border border-white/5 flex flex-col md:flex-row justify-between items-center gap-6">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded bg-brand-red/10 flex items-center justify-center border border-brand-red/20 text-brand-red shrink-0">
+              <FileDown size={24} />
+            </div>
+            <div>
+              <h4 className="font-display font-bold text-lg text-white mb-1">
+                <a 
+                  href="https://triangulofotoclub.com.br/locacao/estudio/pdf%20locac%CC%A7a%CC%83o.pdf"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-brand-red hover:underline transition-colors duration-300"
+                >
+                  Baixe nosso Manual
+                </a>
+              </h4>
+              <p className="text-xs text-zinc-400 font-light max-w-xl leading-relaxed">
+                Confira todas as especificações técnicas, regras do estúdio e informações detalhadas sobre as salas do Triângulo.
+              </p>
+            </div>
+          </div>
+          <a
+            href="https://triangulofotoclub.com.br/locacao/estudio/pdf%20locac%CC%A7a%CC%83o.pdf"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full md:w-auto bg-brand-red hover:bg-red-700 text-white font-mono text-xs uppercase tracking-wider py-3 px-6 rounded text-center transition-all duration-300 cursor-pointer active:scale-95 shadow-md shadow-brand-red/10 shrink-0 flex items-center justify-center gap-2"
+          >
+            Baixe nosso Manual
           </a>
         </div>
 

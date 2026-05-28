@@ -19,6 +19,7 @@ export default function Hero() {
           src={ASSETS.studioHero}
           alt="Triângulo Estúdio Fotoclub Banner"
           referrerPolicy="no-referrer"
+          fetchPriority="high"
           className="w-full h-full object-cover opacity-35 scale-105 filter brightness-90 saturate-[0.8]"
         />
         {/* Radical dark vignettes to match user #181818 block requirement */}

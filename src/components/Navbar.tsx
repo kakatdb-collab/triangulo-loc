@@ -41,6 +41,7 @@ export default function Navbar() {
     { label: "O Conceito", href: "#conceito", id: "conceito" },
     { label: "O Espaço", href: "#espacos", id: "espacos" },
     { label: "Planos", href: "#planos", id: "planos" },
+    { label: "Manual", href: "https://triangulofotoclub.com.br/locacao/estudio/pdf%20locac%CC%A7a%CC%83o.pdf", id: "manual", external: true },
     { label: "Reservas", href: "#reservar", id: "reservar" },
     { label: "Contato", href: "#contato", id: "contato" },
   ];
@@ -79,6 +80,8 @@ export default function Navbar() {
               <li key={item.id}>
                 <a
                   href={item.href}
+                  target={item.external ? "_blank" : undefined}
+                  rel={item.external ? "noopener noreferrer" : undefined}
                   className={`relative text-xs font-mono uppercase tracking-widest transition-colors py-2 ${
                     activeSection === item.id
                       ? "text-brand-red"
@@ -120,6 +123,8 @@ export default function Navbar() {
               <li key={item.id}>
                 <a
                   href={item.href}
+                  target={item.external ? "_blank" : undefined}
+                  rel={item.external ? "noopener noreferrer" : undefined}
                   onClick={() => setMobileMenuOpen(false)}
                   className={`block text-sm font-mono uppercase tracking-widest py-2 ${
                     activeSection === item.id ? "text-brand-red font-bold" : "text-zinc-300"
