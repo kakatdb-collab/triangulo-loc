@@ -91,7 +91,7 @@ export default function Hero() {
           transition={{ duration: 0.8, delay: 0.4 }}
           className="text-zinc-300 font-sans text-sm sm:text-lg md:text-xl font-light tracking-wide max-w-2xl leading-relaxed mb-12"
         >
-          Conforto, praticidade e liberdade criativa para suas produções e reuniões em um único lugar.
+          O melhor <strong className="text-white font-medium">estúdio de locação barato</strong> no <strong className="text-white font-medium">centro de São Paulo (SP)</strong>, climatizado e <strong className="text-white font-medium">próximo ao metrô</strong>. Conforto, praticidade e liberdade criativa com iluminação inclusa.
         </motion.p>
 
         {/* Buttons / Actions */}

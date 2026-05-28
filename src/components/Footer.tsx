@@ -38,7 +38,7 @@ export default function Footer() {
             </div>
 
             <p className="text-zinc-400 font-sans text-xs sm:text-sm font-light leading-relaxed max-w-sm">
-              Um espaço desenhado para fotógrafos, diretores de arte, criadores de conteúdo e agências modernas. Fomentamos a arte fotográfica através da infraestrutura de ponta e da inovação.
+              O Triângulo é um <strong className="text-white hover:text-[#d93838] transition-colors font-medium">estúdio de locação barato no centro de São Paulo</strong> desenhado para fotógrafos, diretores de arte, criadores de conteúdo e agências modernas. Infraestrutura de ponta com excelente custo-benefício.
             </p>
 
             <div className="flex gap-4">
@@ -79,8 +79,9 @@ export default function Footer() {
               <li className="flex items-start gap-3">
                 <MapPin size={16} className="text-[#d93838] shrink-0 mt-0.5" />
                 <div>
-                  <span className="block font-semibold text-white">Nosso Endereço:</span>
-                  <span className="text-zinc-400 text-xs">Largo do Paissandu, 72 - Conj. 1803 • Centro, São Paulo - SP</span>
+                   <span className="block font-semibold text-white">Nosso Endereço:</span>
+                   <span className="text-zinc-400 text-xs block">Largo do Paissandu, 72 - Conj. 1803 • Centro, São Paulo - SP</span>
+                   <span className="text-zinc-500 text-xs block mt-1">Estúdio próximo ao metrô (Estações República, São Bento e Anhangabaú)</span>
                 </div>
               </li>
 

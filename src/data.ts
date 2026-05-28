@@ -15,7 +15,7 @@ export const ASSETS = {
 export const STUDIO_SPACES: StudioSpace[] = [
   {
     id: "prisma",
-    name: "Estúdio Prisma",
+    name: "Triângulo Estúdio",
     subtitle: "O infinito branco e iluminação profissional",
     description: "Equipado com um ciclorama(fundo infinito) de madeira branco em 'U', pé direito de 3m, Largura 3M, Profundidade 3M e mais 3 metros de recuo, trás ainda uma estrutura aérea de trilhos para iluminação. Perfeito para editoriais de moda, campanhas publicitárias de grande porte, videoclipes e produções que necessitam de fundo infinito ou iluminação técnica avançada. O estúdio tem escritório, um espaço aconchegante e rústico tipo quarto de AirnB com visual antigo e industrial, mobília vintage e uma varanda para compor com diversos trabalhos de foto e video.",
     hourlyRate: 100,
@@ -127,7 +127,7 @@ export const TESTIMONIALS: Testimonial[] = [
     id: "t2",
     name: "Vivian Martins",
     role: "Fotógrafa Autoral & Retratista",
-    quote: "Eu me apaixonei pelo Estúdio Prisma. A infraestrutura de iluminação e a amplitude do espaço criam uma atmosfera tão rica que torna o ensaio mais profissional e com resultado impecável.",
+    quote: "Eu me apaixonei pelo Triângulo Estúdio. A infraestrutura de iluminação e a amplitude do espaço criam uma atmosfera tão rica que torna o ensaio mais profissional e com resultado impecável.",
     rating: 5,
     avatarUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=150",
   },

@@ -30,7 +30,7 @@ const PRISMA_PHOTOS = [
     caption: "Iluminação profissional e modificadores de luz de ponta inclusos",
   },
   {
-    url: "https://srv881-files.hstgr.io/31fcb1517ab0164a/files/public_html/locacao/27%20-%20Varamda%20.jpg",
+    url: "https://triangulofotoclub.com.br/locacao/27%20-%20Varamda%20.jpg",
     caption: "Varanda charmosa e rústica integrada para ensaios ao ar livre e luz natural",
   },
   {
@@ -51,7 +51,7 @@ export default function Spaces({ onSelectSpace }: SpacesProps) {
   const [activePhotoIdx, setActivePhotoIdx] = useState(0);
   const space = STUDIO_SPACES[0] || {
     id: "prisma",
-    name: "Estúdio Prisma",
+    name: "Triângulo Estúdio",
     subtitle: "O infinito branco e iluminação profissional",
     description: "Equipado com um ciclorama(fundo infinito) de madeira branco em 'U', pé direito de 3m, Largura 3M, Profundidade 3M e mais 3 metros de recuo, trás ainda uma estrutura aérea de trilhos para iluminação. Perfeito para editoriais de moda, campanhas publicitárias de grande porte, videoclipes e produções que necessitam de fundo infinito ou iluminação técnica avançada. O estúdio tem escritório, um espaço aconchegante e rústico tipo quarto de AirnB com visual antigo e industrial, mobília vintage e uma varanda para compor com diversos trabalhos de foto e video.",
     hourlyRate: 100,
@@ -126,7 +126,7 @@ export default function Spaces({ onSelectSpace }: SpacesProps) {
               {/* Cover Bottom Gradient & Caption */}
               <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/45 to-transparent p-6 pt-12">
                 <span className="text-xs font-mono uppercase text-[#d93838] block mb-1 tracking-wider">
-                  Estúdio Prisma • Diferenciais
+                  Triângulo Estúdio • Diferenciais
                 </span>
                 <p className="text-sm text-zinc-200 font-light tracking-wide drop-shadow-sm">
                   {PRISMA_PHOTOS[activePhotoIdx].caption}

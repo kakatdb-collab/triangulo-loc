@@ -39,7 +39,7 @@ export default function Navbar() {
   const menuItems = [
     { label: "Início", href: "#hero", id: "hero" },
     { label: "O Conceito", href: "#conceito", id: "conceito" },
-    { label: "Os Espaços", href: "#espacos", id: "espacos" },
+    { label: "O Espaço", href: "#espacos", id: "espacos" },
     { label: "Planos", href: "#planos", id: "planos" },
     { label: "Portfólio", href: "#portfolio", id: "portfolio" },
     { label: "Reservas", href: "#reservar", id: "reservar" },

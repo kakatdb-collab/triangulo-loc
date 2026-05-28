@@ -209,7 +209,7 @@ export default function Pricing() {
         {/* Title of Pricing Section */}
         <div className="pricing-header">
           <h2 className="pricing-title">Planos de Coworking</h2>
-          <p className="pricing-subtitle">Escolha o plano ideal para as suas produções</p>
+          <p className="pricing-subtitle">O estúdio de locação mais barato do Centro de SP com infraestrutura premium, a passos do metrô</p>
         </div>
 
         {/* Introduction / Info Box */}
