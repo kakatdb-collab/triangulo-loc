@@ -9,7 +9,6 @@ import Hero from "./components/Hero";
 import Concept from "./components/Concept";
 import Spaces from "./components/Spaces";
 import Pricing from "./components/Pricing";
-import Portfolio from "./components/Portfolio";
 import BookingSystem from "./components/BookingSystem";
 import Testimonials from "./components/Testimonials";
 import Footer from "./components/Footer";
@@ -43,9 +42,6 @@ export default function App() {
 
       {/* Pricing / Coworking Plans Section */}
       <Pricing />
-
-      {/* Portfolio Gallery Showcase */}
-      <Portfolio />
 
       {/* Booking Calculator System */}
       <BookingSystem 

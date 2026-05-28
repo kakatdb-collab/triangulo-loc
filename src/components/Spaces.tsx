@@ -10,6 +10,7 @@ import {
   Maximize, 
   CheckCircle2, 
   ChevronRight, 
+  ChevronLeft,
   Sparkles, 
   Camera, 
   Image as ImageIcon 
@@ -22,28 +23,116 @@ interface SpacesProps {
 
 const PRISMA_PHOTOS = [
   {
-    url: ASSETS.prismaStudioFirst,
-    caption: "Estúdio principal com ciclorama em 'U' inovador, sofá Chesterfield e ampla iluminação aérea",
+    url: "https://triangulofotoclub.com.br/locacao/estudio/01-Escritorio.webp",
+    caption: "Escritório elegante e versátil, multiuso para reunião e trabalho.",
   },
   {
-    url: "https://images.unsplash.com/photo-1616448242352-0d6df6cfab0e?auto=format&fit=crop&q=80&w=1000",
-    caption: "Iluminação profissional e modificadores de luz de ponta inclusos",
+    url: "https://triangulofotoclub.com.br/locacao/estudio/02-Escritorio.webp",
+    caption: "Escritório elegante e versátil, multiuso para reunião e trabalho.",
   },
   {
-    url: "https://triangulofotoclub.com.br/locacao/27%20-%20Varamda%20.jpg",
-    caption: "Varanda charmosa e rústica integrada para ensaios ao ar livre e luz natural",
+    url: "https://triangulofotoclub.com.br/locacao/estudio/03-Fundo_Infinito_ciclorama.webp",
+    caption: "Fundo Infinito No Formato U todo em madeira",
   },
   {
-    url: "https://images.unsplash.com/photo-1512496015851-a90fb38ba796?auto=format&fit=crop&q=80&w=1000",
-    caption: "Camarim mobiliado de alto padrão para maquiagem e cabelo",
+    url: "https://triangulofotoclub.com.br/locacao/estudio/04-Fundo_Infinito_ciclorama%20%2B%20sofa%20capitone.webp",
+    caption: "Fundo Infinito No Formato U todo em madeira (Sofa Capitone)",
   },
   {
-    url: "https://images.unsplash.com/photo-1542038784456-1ea8e935640e?auto=format&fit=crop&q=80&w=1000",
-    caption: "Equipamentos de suporte premium, tripés e painéis refletores",
+    url: "https://triangulofotoclub.com.br/locacao/estudio/05-cenario_estudio.webp",
+    caption: "Cenário moderno com poltrona Capitone.",
   },
   {
-    url: "https://images.unsplash.com/photo-1513151233558-d860c5398176?auto=format&fit=crop&q=80&w=1000",
-    caption: "Grid de teto pantográfico para total controle do seu setup",
+    url: "https://triangulofotoclub.com.br/locacao/estudio/06-Cenario_estudio.webp",
+    caption: "Cenário moderno.",
+  },
+  {
+    url: "https://triangulofotoclub.com.br/locacao/estudio/07-acessorios.webp",
+    caption: "Acessórios",
+  },
+  {
+    url: "https://triangulofotoclub.com.br/locacao/estudio/08-Grua.webp",
+    caption: "Girafa e Octabox",
+  },
+  {
+    url: "https://triangulofotoclub.com.br/locacao/estudio/09-Tochas_Godox_SK_400.webp",
+    caption: "3 Tochas Godox SK 400, com radio Flash universal.",
+  },
+  {
+    url: "https://triangulofotoclub.com.br/locacao/estudio/10-Fundos_coloridos.webp",
+    caption: "Opções de Fundo Colorido",
+  },
+  {
+    url: "https://triangulofotoclub.com.br/locacao/estudio/11-Quarto%201%20.webp",
+    caption: "Quarto Cênico Decoração Vintage com um toque industrial.",
+  },
+  {
+    url: "https://triangulofotoclub.com.br/locacao/estudio/12-Quarto%202.webp",
+    caption: "Sofa e Poltrona Capitone",
+  },
+  {
+    url: "https://triangulofotoclub.com.br/locacao/estudio/13-Quarto%203.webp",
+    caption: "Quarto Cênico Decoração Vintage com um toque industrial.",
+  },
+  {
+    url: "https://triangulofotoclub.com.br/locacao/estudio/14-Quarto%204.webp",
+    caption: "Cama com cabeceira vintage",
+  },
+  {
+    url: "https://triangulofotoclub.com.br/locacao/estudio/15-Quarto%205.webp",
+    caption: "Quarto Cênico Decoração Vintage com um toque industrial.",
+  },
+  {
+    url: "https://triangulofotoclub.com.br/locacao/estudio/16-Quarto%20%205.webp",
+    caption: "Quarto Cênico Decoração Vintage com um toque industrial.",
+  },
+  {
+    url: "https://triangulofotoclub.com.br/locacao/estudio/17-Quarto%20%206.webp",
+    caption: "Banheira e espelho",
+  },
+  {
+    url: "https://triangulofotoclub.com.br/locacao/estudio/18-Quarto%207.webp",
+    caption: "Banheira e espelho",
+  },
+  {
+    url: "https://triangulofotoclub.com.br/locacao/estudio/19-Quarto%20%208.webp",
+    caption: "Banheira",
+  },
+  {
+    url: "https://triangulofotoclub.com.br/locacao/estudio/20-Quarto%20%209.webp",
+    caption: "Cantinho Verde",
+  },
+  {
+    url: "https://triangulofotoclub.com.br/locacao/estudio/21-Quarto%20%2010.webp",
+    caption: "Balanço Acrilico",
+  },
+  {
+    url: "https://triangulofotoclub.com.br/locacao/estudio/22%20-%20Quarto%20%2012.webp",
+    caption: "Penteadeira Vintage, Poltrona Capitone",
+  },
+  {
+    url: "https://triangulofotoclub.com.br/locacao/estudio/23%20-%20Quarto%20%2013.webp",
+    caption: "Poltrona Capitone",
+  },
+  {
+    url: "https://triangulofotoclub.com.br/locacao/estudio/24%20-%20Varamda%2001.webp",
+    caption: "Varanda com linda Vista pro Centro Velho de - SP",
+  },
+  {
+    url: "https://triangulofotoclub.com.br/locacao/estudio/25%20-%20Varamda%20.webp",
+    caption: "Banheira vintage de Ferro Fundido",
+  },
+  {
+    url: "https://triangulofotoclub.com.br/locacao/estudio/26%20-%20Varamda%20.webp",
+    caption: "Varanda Com linda Vista para o Viaduto Santa Efigenia.",
+  },
+  {
+    url: "https://triangulofotoclub.com.br/locacao/estudio/27%20-%20Varamda%20.webp",
+    caption: "Varanda Com linda Vista para o Viaduto Santa Efigenia.",
+  },
+  {
+    url: "https://triangulofotoclub.com.br/locacao/estudio/28%20-%20Varamda%20.webp",
+    caption: "Varanda com Rede",
   }
 ];
 
@@ -112,6 +201,30 @@ export default function Spaces({ onSelectSpace }: SpacesProps) {
                 />
               </AnimatePresence>
               
+              {/* Left and Right Navigation Chevrons */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActivePhotoIdx((prev) => (prev === 0 ? PRISMA_PHOTOS.length - 1 : prev - 1));
+                }}
+                className="absolute left-3 top-1/2 -translate-y-1/2 w-8 sm:w-10 h-8 sm:h-10 rounded-full bg-black/70 hover:bg-[#d93838] text-white flex items-center justify-center transition-all duration-300 border border-white/10 active:scale-90 md:opacity-0 group-hover:opacity-100 focus:opacity-100 cursor-pointer z-10"
+                aria-label="Foto anterior"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActivePhotoIdx((prev) => (prev === PRISMA_PHOTOS.length - 1 ? 0 : prev + 1));
+                }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 w-8 sm:w-10 h-8 sm:h-10 rounded-full bg-black/70 hover:bg-[#d93838] text-white flex items-center justify-center transition-all duration-300 border border-white/10 active:scale-90 md:opacity-0 group-hover:opacity-100 focus:opacity-100 cursor-pointer z-10"
+                aria-label="Próxima foto"
+              >
+                <ChevronRight size={16} />
+              </button>
+
               {/* Overlay Top Bar indicator */}
               <div className="absolute top-4 left-4 bg-black/85 backdrop-blur-md px-3 py-1.5 text-[9px] font-mono uppercase tracking-wider text-white border border-white/10 rounded flex items-center gap-1.5">
                 <Camera size={10} className="text-[#d93838]" />
@@ -128,7 +241,7 @@ export default function Spaces({ onSelectSpace }: SpacesProps) {
                 <span className="text-xs font-mono uppercase text-[#d93838] block mb-1 tracking-wider">
                   Triângulo Estúdio • Diferenciais
                 </span>
-                <p className="text-sm text-zinc-200 font-light tracking-wide drop-shadow-sm">
+                <p className="text-sm text-zinc-200 font-light tracking-wide drop-shadow-sm pr-12">
                   {PRISMA_PHOTOS[activePhotoIdx].caption}
                 </p>
               </div>
@@ -137,13 +250,13 @@ export default function Spaces({ onSelectSpace }: SpacesProps) {
               <div className="absolute inset-0 border border-white/5 pointer-events-none group-hover:border-[#d93838]/15 transition-all duration-500" />
             </div>
 
-            {/* Thumbnail Navigation Row */}
-            <div className="grid grid-cols-6 gap-2 sm:gap-3" id="gallery-navigation-thumbnails">
+            {/* Thumbnail Navigation Row - Horizontal snap scroll with scrollbar customization */}
+            <div className="flex gap-2 sm:gap-2.5 overflow-x-auto pb-3 pt-1 scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-stone-900 scrollbar-thumb-rounded-full snap-x" id="gallery-navigation-thumbnails">
               {PRISMA_PHOTOS.map((photo, index) => (
                 <button
                   key={index}
                   onClick={() => setActivePhotoIdx(index)}
-                  className={`relative aspect-[4/3] rounded overflow-hidden border transition-all duration-300 ${
+                  className={`relative shrink-0 w-16 sm:w-20 aspect-[4/3] rounded overflow-hidden border transition-all duration-300 snap-start ${
                     activePhotoIdx === index 
                       ? "border-[#d93838] scale-95 shadow-md shadow-[#d93838]/10" 
                       : "border-white/5 hover:border-white/20 filter brightness-75 hover:brightness-100"
@@ -151,7 +264,7 @@ export default function Spaces({ onSelectSpace }: SpacesProps) {
                 >
                   <img
                     src={photo.url}
-                    alt={`Thumbnail ${index}`}
+                    alt={`Thumbnail ${index + 1}`}
                     referrerPolicy="no-referrer"
                     className="w-full h-full object-cover"
                   />

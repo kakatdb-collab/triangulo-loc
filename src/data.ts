@@ -9,7 +9,7 @@ import { StudioSpace, Equipment, PortfolioItem, Testimonial } from "./types";
 export const ASSETS = {
   studioHero: "/src/assets/images/studio_hero_1779639642169.png",
   triangleConcept: "/src/assets/images/triangle_concept_1779639657792.png",
-  prismaStudioFirst: "/src/assets/images/prisma_studio_first_1779921851529.png",
+  prismaStudioFirst: "https://triangulofotoclub.com.br/locacao/estudio/01-Escritorio.webp",
 };
 
 export const STUDIO_SPACES: StudioSpace[] = [

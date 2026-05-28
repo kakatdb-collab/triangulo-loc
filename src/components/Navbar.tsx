@@ -16,7 +16,7 @@ export default function Navbar() {
       setIsScrolled(window.scrollY > 50);
 
       // Simple active link determination
-      const sections = ["hero", "conceito", "espacos", "planos", "portfolio", "reservar", "contato"];
+      const sections = ["hero", "conceito", "espacos", "planos", "reservar", "contato"];
       const scrollPosition = window.scrollY + 200;
 
       for (const section of sections) {
@@ -41,7 +41,6 @@ export default function Navbar() {
     { label: "O Conceito", href: "#conceito", id: "conceito" },
     { label: "O Espaço", href: "#espacos", id: "espacos" },
     { label: "Planos", href: "#planos", id: "planos" },
-    { label: "Portfólio", href: "#portfolio", id: "portfolio" },
     { label: "Reservas", href: "#reservar", id: "reservar" },
     { label: "Contato", href: "#contato", id: "contato" },
   ];
