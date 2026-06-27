@@ -1,0 +1,89 @@
+{
+  "firestore": {
+    "users": {
+      "schema": "User",
+      "description": "User profiles and role settings"
+    },
+    "bookings": {
+      "schema": "Booking",
+      "description": "Studio booking requests and payments"
+    },
+    "settings": {
+      "schema": "Settings",
+      "description": "Dynamic pricing settings and available equipment"
+    },
+    "messages": {
+      "schema": "Message",
+      "description": "Internal chat messages between clients and administrator"
+    }
+  },
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User account registration details",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "role": { "type": "string", "enum": ["client", "admin"] },
+        "avatarUrl": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Booking": {
+      "title": "Booking Details",
+      "description": "A rental reservation record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "spaceId": { "type": "string" },
+        "spaceName": { "type": "string" },
+        "date": { "type": "string" },
+        "timeSlot": { "type": "string" },
+        "durationHours": { "type": "number" },
+        "clientName": { "type": "string" },
+        "clientEmail": { "type": "string" },
+        "clientPhone": { "type": "string" },
+        "selectedEquipIds": { "type": "array" },
+        "notes": { "type": "string" },
+        "totalPrice": { "type": "number" },
+        "depositPaid": { "type": "boolean" },
+        "paymentTxId": { "type": "string" },
+        "status": { "type": "string", "enum": ["Simulada", "Pendente", "Reservada", "Concluída"] },
+        "createdAt": { "type": "string" },
+        "userId": { "type": "string" }
+      },
+      "required": ["id", "spaceId", "date", "clientEmail", "clientName", "totalPrice", "status"]
+    },
+    "Settings": {
+      "title": "System Settings",
+      "description": "Dynamic prices and optional items configuration",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "hourlyRate": { "type": "number" },
+        "halfDayRate": { "type": "number" },
+        "fullDayRate": { "type": "number" },
+        "equipments": { "type": "array" }
+      },
+      "required": ["id"]
+    },
+    "Message": {
+      "title": "Internal Chat Message",
+      "description": "A message sent inside the platform",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "recipientId": { "type": "string" },
+        "text": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "senderId", "text", "createdAt"]
+    }
+  }
+}

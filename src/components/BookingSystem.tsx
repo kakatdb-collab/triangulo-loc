@@ -24,6 +24,7 @@ import {
 import { jsPDF } from "jspdf";
 import { STUDIO_SPACES, EQUIPMENT_LIST } from "../data";
 import { StudioSpace, Equipment, Booking } from "../types";
+import { db, auth, doc, setDoc, onSnapshot, collection } from "../lib/firebase";
 
 interface BookingSystemProps {
   selectedSpaceId: string;
@@ -31,6 +32,29 @@ interface BookingSystemProps {
 }
 
 export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: BookingSystemProps) {
+  // Simulator pricing states (synced with Firebase dynamically)
+  const [dbHourlyRate, setDbHourlyRate] = useState<number>(100);
+  const [dbHalfDayRate, setDbHalfDayRate] = useState<number>(400);
+  const [dbFullDayRate, setDbFullDayRate] = useState<number>(700);
+  const [dbEquipments, setDbEquipments] = useState<Equipment[]>(EQUIPMENT_LIST);
+
+  useEffect(() => {
+    // Dynamic settings loader
+    const settingsRef = doc(db, "settings", "simulator");
+    const unsub = onSnapshot(settingsRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        setDbHourlyRate(data.hourlyRate || 100);
+        setDbHalfDayRate(data.halfDayRate || 400);
+        setDbFullDayRate(data.fullDayRate || 700);
+        if (data.equipments && data.equipments.length > 0) {
+          setDbEquipments(data.equipments);
+        }
+      }
+    });
+    return () => unsub();
+  }, []);
+
   // Calendar states
   const [selectedDate, setSelectedDate] = useState<string>("");
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<string>("");
@@ -44,6 +68,18 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
   const [clientEmail, setClientEmail] = useState("");
   const [clientPhone, setClientPhone] = useState("");
   const [projectNotes, setProjectNotes] = useState("");
+
+  // Contract & Rules details
+  const [clientCpfCnpj, setClientCpfCnpj] = useState("");
+  const [clientCep, setClientCep] = useState("");
+  const [clientAddress, setClientAddress] = useState("");
+  const [clientAddressNum, setClientAddressNum] = useState("");
+  const [clientAddressComp, setClientAddressComp] = useState("");
+  const [clientAddressBairro, setClientAddressBairro] = useState("");
+  const [clientAddressCidade, setClientAddressCidade] = useState("");
+  const [clientAddressUF, setClientAddressUF] = useState("");
+  const [acceptedRules, setAcceptedRules] = useState(false);
+  const [isRulesModalOpen, setIsRulesModalOpen] = useState(false);
 
   // System states
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -74,7 +110,7 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
   };
 
   // Generate PDF document for a booking
-  const generatePDFOfBooking = (booking: Booking) => {
+  const generatePDFOfBooking = (booking: Booking, autoSend: boolean = false) => {
     try {
       const doc = new jsPDF({
         orientation: "portrait",
@@ -100,7 +136,7 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
       doc.setFontSize(9);
       doc.setTextColor(180, 180, 180);
       doc.text("RECIBO DE SIMULACAO DE RESERVA E PROPOSTA", 15, 26);
-      doc.text("Rua Augusta, 1250 - Consolacao - Sao Paulo SP", 15, 31);
+      doc.text("Largo do Paissandu, 72 - Centro - Sao Paulo SP", 15, 31);
 
       // Metas
       doc.setFontSize(9);
@@ -140,57 +176,72 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
       doc.setFont("helvetica", "normal");
       doc.text(booking.clientEmail, 50, 78);
 
+      if (booking.clientCpfCnpj) {
+        doc.setFont("helvetica", "bold");
+        doc.text("CPF / CNPJ:", 15, 85);
+        doc.setFont("helvetica", "normal");
+        doc.text(booking.clientCpfCnpj, 50, 85);
+      }
+
+      if (booking.clientAddress) {
+        doc.setFont("helvetica", "bold");
+        doc.text("Endereco Contrato:", 15, 92);
+        doc.setFont("helvetica", "normal");
+        const fullAddr = `${booking.clientAddress}, ${booking.clientAddressNum}${booking.clientAddressComp ? ' - ' + booking.clientAddressComp : ''}, ${booking.clientAddressBairro}, ${booking.clientAddressCidade}/${booking.clientAddressUF} (CEP ${booking.clientCep})`;
+        doc.text(fullAddr, 50, 92, { maxWidth: 145 });
+      }
+
       if (booking.notes) {
         doc.setFont("helvetica", "bold");
-        doc.text("Notas do Projeto:", 15, 85);
+        doc.text("Notas do Projeto:", 15, 106);
         doc.setFont("helvetica", "normal");
-        doc.text(booking.notes, 50, 85, { maxWidth: 145 });
+        doc.text(booking.notes, 50, 106, { maxWidth: 145 });
       }
 
       // Booking details section
       doc.setTextColor(30, 30, 30);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(11);
-      doc.text("2. DETALHES DO ESPACO & TEMPO", 15, 102);
+      doc.text("2. DETALHES DO ESPACO & TEMPO", 15, 120);
       
       doc.setDrawColor(217, 56, 56);
-      doc.line(15, 104, 195, 104);
+      doc.line(15, 122, 195, 122);
 
       doc.setFont("helvetica", "bold");
       doc.setFontSize(10);
       doc.setTextColor(70, 70, 70);
       
-      doc.text("Espaco Escolhido:", 15, 112);
+      doc.text("Espaco Escolhido:", 15, 130);
       doc.setFont("helvetica", "normal");
-      doc.text(booking.spaceName, 50, 112);
+      doc.text(booking.spaceName, 50, 130);
 
       doc.setFont("helvetica", "bold");
-      doc.text("Data Solicitada:", 15, 119);
+      doc.text("Data Solicitada:", 15, 137);
       doc.setFont("helvetica", "normal");
-      doc.text(booking.date, 50, 119);
+      doc.text(booking.date, 50, 137);
 
       doc.setFont("helvetica", "bold");
-      doc.text("Periodo Reserva:", 15, 126);
+      doc.text("Periodo Reserva:", 15, 144);
       doc.setFont("helvetica", "normal");
-      doc.text(booking.timeSlot, 50, 126);
+      doc.text(booking.timeSlot, 50, 144);
 
       doc.setFont("helvetica", "bold");
-      doc.text("Carga Horaria:", 15, 133);
+      doc.text("Carga Horaria:", 15, 151);
       doc.setFont("helvetica", "normal");
-      doc.text(`${booking.durationHours} horas contratadas`, 50, 133);
+      doc.text(`${booking.durationHours} horas contratadas`, 50, 151);
 
       // Financial Calculation Block
       doc.setTextColor(30, 30, 30);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(11);
-      doc.text("3. DEMONSTRATIVO DE VALORES", 15, 150);
+      doc.text("3. DEMONSTRATIVO DE VALORES", 15, 165);
       
       doc.setDrawColor(217, 56, 56);
-      doc.line(15, 152, 195, 152);
+      doc.line(15, 167, 195, 167);
 
       // Table panel backgrounds
       doc.setFillColor(248, 248, 248);
-      doc.rect(15, 156, 180, 42, "F");
+      doc.rect(15, 171, 180, 42, "F");
 
       doc.setFont("helvetica", "normal");
       doc.setFontSize(9.5);
@@ -198,25 +249,25 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
 
       // Space Cost Calc
       const spaceObj = STUDIO_SPACES.find(s => s.id === booking.spaceId) || STUDIO_SPACES[0];
-      const spaceHourlyRate = spaceObj ? spaceObj.hourlyRate : 100;
-      doc.text(`Custo de Locacao do Estudio (${booking.durationHours}h x R$ ${spaceHourlyRate},00)`, 20, 164);
-      doc.text(`R$ ${spaceHourlyRate * booking.durationHours},00`, 190, 164, { align: "right" });
+      const spaceHourlyRate = dbHourlyRate;
+      doc.text(`Custo de Locacao do Estudio (${booking.durationHours}h x R$ ${spaceHourlyRate},00)`, 20, 179);
+      doc.text(`R$ ${spaceHourlyRate * booking.durationHours},00`, 190, 179, { align: "right" });
 
       // Discount Row if any
       const discount = getDiscount(booking.durationHours);
       if (discount > 0) {
         doc.setTextColor(217, 56, 56);
         doc.setFont("helvetica", "bold");
-        doc.text(`(-) Desconto de Duracao Progressivo`, 20, 171);
-        doc.text(`- R$ ${discount},00`, 190, 171, { align: "right" });
+        doc.text(`(-) Desconto de Duracao Progressivo`, 20, 186);
+        doc.text(`- R$ ${discount},00`, 190, 186, { align: "right" });
         doc.setTextColor(80, 80, 80);
         doc.setFont("helvetica", "normal");
       }
 
       // Add-ons / Equipment
-      const gearY = discount > 0 ? 178 : 171;
+      const gearY = discount > 0 ? 193 : 186;
       const equipCost = booking.selectedEquipIds.reduce((sum, id) => {
-        const eq = EQUIPMENT_LIST.find(item => item.id === id);
+        const eq = dbEquipments.find(item => item.id === id);
         return sum + (eq ? eq.price : 0);
       }, 0);
 
@@ -230,51 +281,55 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
 
       // Border division in pricing box
       doc.setDrawColor(230, 230, 230);
-      doc.line(20, 185, 190, 185);
+      doc.line(20, 200, 190, 200);
 
       // Total Text
       doc.setFont("helvetica", "bold");
       doc.setFontSize(11);
       doc.setTextColor(26, 26, 26);
-      doc.text("VALOR TOTAL DA SOLICITACAO:", 20, 192);
+      doc.text("VALOR TOTAL DA SOLICITACAO:", 20, 207);
       
       doc.setTextColor(217, 56, 56);
       doc.setFontSize(13);
-      doc.text(`R$ ${booking.totalPrice},00`, 190, 192, { align: "right" });
+      doc.text(`R$ ${booking.totalPrice},00`, 190, 207, { align: "right" });
 
       // Action and next step guidelines panel at bottom
       doc.setFillColor(245, 245, 245);
-      doc.rect(15, 205, 180, 40, "F");
+      doc.rect(15, 220, 180, 40, "F");
 
       // Small green confirmation sign mockup
       doc.setFillColor(230, 244, 234);
-      doc.rect(15, 242, 180, 8, "F");
+      doc.rect(15, 262, 180, 8, "F");
       doc.setFontSize(8.5);
       doc.setFont("helvetica", "bold");
       doc.setTextColor(30, 126, 52);
-      doc.text("✔ SIMULADOR ATIVO - ENVIE ESTE RESUMO PARA CONCLUIR", 20, 247.5);
+      doc.text("✔ SIMULADOR ATIVO - ENVIE ESTE RESUMO PARA CONCLUIR", 20, 267.5);
 
       doc.setFont("helvetica", "bold");
       doc.setFontSize(10);
       doc.setTextColor(30, 30, 30);
-      doc.text("INSTRUCOES DE PAGAMENTO E AGENDAMENTO FINAL:", 20, 212);
+      doc.text("INSTRUCOES DE PAGAMENTO E AGENDAMENTO FINAL:", 20, 227);
 
       doc.setFont("helvetica", "normal");
       doc.setFontSize(8.5);
       doc.setTextColor(100, 100, 100);
-      doc.text("1. Este comprovante contem a simulacao exata da locacao com impostos e descontos.", 20, 219);
-      doc.text("2. Para validar as faixas de horarios, entre em contato no WhatsApp com a referencia acima.", 20, 225);
-      doc.text("3. Um deposito sinal (Via Pix) assegura o bloqueio definitivo da data em nosso painel.", 20, 231);
-      doc.text("Contatos: (11) 96195-9349 | kakatdb@gmail.com", 20, 237);
+      doc.text("1. Este comprovante contem a simulacao exata da locacao com impostos e descontos.", 20, 234);
+      doc.text("2. Para validar as faixas de horarios, entre em contato no WhatsApp com a referencia acima.", 20, 240);
+      doc.text("3. Um deposito sinal (Via Pix) assegura o bloco definitivo da data em nosso painel.", 20, 246);
+      doc.text("Contatos: (11) 96195-9349 | contato@triangulofotoclub.com.br", 20, 252);
 
       // PDF branding line
       doc.setFontSize(8);
       doc.setTextColor(160, 160, 160);
       doc.text("Triangulo Co-working & Studio Fotocentrando - Sao Paulo", 105, 275, { align: "center" });
 
-      doc.save(`Reserva_Triangulo_Ref_${booking.id}.pdf`);
+      if (!autoSend) {
+        doc.save(`Reserva_Triangulo_Ref_${booking.id}.pdf`);
+      }
+      return doc.output("datauristring");
     } catch (err) {
       console.error("Critical error generating PDF:", err);
+      return "";
     }
   };
 
@@ -282,7 +337,7 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
   const sendToWhatsApp = (booking: Booking) => {
     try {
       const equipNames = booking.selectedEquipIds.map(id => {
-        const eq = EQUIPMENT_LIST.find(item => item.id === id);
+        const eq = dbEquipments.find(item => item.id === id);
         return eq ? ` - ${eq.name} (R$ ${eq.price},00)` : "";
       }).filter(Boolean).join("\n");
 
@@ -324,11 +379,11 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
   // Pricing math calculator
   const calculatePricing = () => {
     const discount = getDiscount(durationHours);
-    const spaceCost = (currentSpace.hourlyRate * durationHours) - discount;
+    const spaceCost = (dbHourlyRate * durationHours) - discount;
 
     // Equipment pricing is flat/daily rate
     const equipCost = selectedEquipIds.reduce((sum, id) => {
-      const eq = EQUIPMENT_LIST.find(item => item.id === id);
+      const eq = dbEquipments.find(item => item.id === id);
       return sum + (eq ? eq.price : 0);
     }, 0);
 
@@ -381,12 +436,61 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
     setPhoneError("");
   };
 
+  const handleCpfCnpjChange = (val: string) => {
+    const cleaned = val.replace(/\D/g, "");
+    let formatted = cleaned;
+    if (cleaned.length <= 11) {
+      if (cleaned.length > 9) {
+        formatted = `${cleaned.substring(0, 3)}.${cleaned.substring(3, 6)}.${cleaned.substring(6, 9)}-${cleaned.substring(9)}`;
+      } else if (cleaned.length > 6) {
+        formatted = `${cleaned.substring(0, 3)}.${cleaned.substring(3, 6)}.${cleaned.substring(6)}`;
+      } else if (cleaned.length > 3) {
+        formatted = `${cleaned.substring(0, 3)}.${cleaned.substring(3)}`;
+      }
+    } else {
+      if (cleaned.length > 12) {
+        formatted = `${cleaned.substring(0, 2)}.${cleaned.substring(2, 5)}.${cleaned.substring(5, 8)}/${cleaned.substring(8, 12)}-${cleaned.substring(12, 14)}`;
+      } else if (cleaned.length > 8) {
+        formatted = `${cleaned.substring(0, 2)}.${cleaned.substring(2, 5)}.${cleaned.substring(5, 8)}/${cleaned.substring(8)}`;
+      } else if (cleaned.length > 5) {
+        formatted = `${cleaned.substring(0, 2)}.${cleaned.substring(2, 5)}.${cleaned.substring(5)}`;
+      } else if (cleaned.length > 2) {
+        formatted = `${cleaned.substring(0, 2)}.${cleaned.substring(2)}`;
+      }
+    }
+    setClientCpfCnpj(formatted);
+  };
+
+  const handleCepChange = async (val: string) => {
+    const cleaned = val.replace(/\D/g, "");
+    let formatted = cleaned;
+    if (cleaned.length > 5) {
+      formatted = cleaned.substring(0, 5) + "-" + cleaned.substring(5, 8);
+    }
+    setClientCep(formatted);
+
+    if (cleaned.length === 8) {
+      try {
+        const response = await fetch(`https://viacep.com.br/ws/${cleaned}/json/`);
+        const data = await response.json();
+        if (!data.erro) {
+          setClientAddress(data.logradouro || "");
+          setClientAddressBairro(data.bairro || "");
+          setClientAddressCidade(data.localidade || "");
+          setClientAddressUF(data.uf || "");
+        }
+      } catch (err) {
+        console.error("Erro ao buscar CEP:", err);
+      }
+    }
+  };
+
   const validateEmail = (email: string) => {
     const re = /\S+@\S+\.\S+/;
     return re.test(email);
   };
 
-  const handleBookingSubmit = (e: React.FormEvent) => {
+  const handleBookingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     // Validation
@@ -406,11 +510,26 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
       setPhoneError("Insira um número de telefone completo.");
       return;
     }
+    if (!clientCpfCnpj || clientCpfCnpj.replace(/\D/g, "").length < 11) {
+      alert("Por favor, insira um CPF ou CNPJ válido para o contrato de locação.");
+      return;
+    }
+    if (!clientCep || clientCep.replace(/\D/g, "").length < 8) {
+      alert("Por favor, insira um CEP válido para o contrato de locação.");
+      return;
+    }
+    if (!clientAddress || !clientAddressNum || !clientAddressBairro || !clientAddressCidade || !clientAddressUF) {
+      alert("Por favor, preencha o endereço completo para o contrato de locação.");
+      return;
+    }
+    if (!acceptedRules) {
+      alert("Você precisa ler e aceitar os termos do Contrato de Locação e as Regras do Espaço para realizar o agendamento.");
+      return;
+    }
 
     setIsSubmitting(true);
 
-    // Simulate sending payload smoothly
-    setTimeout(() => {
+    try {
       const code = `TR-${Math.floor(10000 + Math.random() * 90000)}`;
       const newBooking: Booking = {
         id: code,
@@ -425,12 +544,56 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
         selectedEquipIds: [...selectedEquipIds],
         notes: projectNotes,
         totalPrice: pricing.total,
-        status: "Pendente",
-        createdAt: new Date().toLocaleDateString("pt-BR") + " " + new Date().toLocaleTimeString("pt-BR", {hour: '2-digit', minute:'2-digit'})
+        status: "Simulada",
+        createdAt: new Date().toLocaleDateString("pt-BR") + " " + new Date().toLocaleTimeString("pt-BR", {hour: '2-digit', minute:'2-digit'}),
+        depositPaid: false,
+        userId: auth.currentUser?.uid || "",
+        clientCpfCnpj,
+        clientCep,
+        clientAddress,
+        clientAddressNum,
+        clientAddressComp,
+        clientAddressBairro,
+        clientAddressCidade,
+        clientAddressUF,
+        acceptedRules
       };
 
+      // 1. Save to local state and storage
       const updated = [newBooking, ...localBookings];
       saveBookingsToLocal(updated);
+
+      // 2. Save to Firestore (Real persistence)
+      await setDoc(doc(db, "bookings", code), {
+        ...newBooking
+      });
+
+      // 3. Generate PDF client-side
+      const pdfBase64 = generatePDFOfBooking(newBooking, true); // silent base64 generation
+
+      // 4. Trigger Node.js Endpoint to send beautifully structured e-mails with PDF attached using Hostinger
+      try {
+        await fetch("/api/send-booking-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            clientEmail: newBooking.clientEmail,
+            clientName: newBooking.clientName,
+            clientPhone: newBooking.clientPhone,
+            bookingId: newBooking.id,
+            spaceName: newBooking.spaceName,
+            date: newBooking.date,
+            timeSlot: newBooking.timeSlot,
+            totalPrice: newBooking.totalPrice,
+            depositPaid: false,
+            status: "Simulada",
+            pdfBase64: pdfBase64
+          }),
+        });
+      } catch (err) {
+        console.error("Email notification dispatch error:", err);
+      }
+
       setSubmittedBooking(newBooking);
       setIsSubmitting(false);
 
@@ -442,11 +605,24 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
       setClientEmail("");
       setClientPhone("");
       setProjectNotes("");
+      setClientCpfCnpj("");
+      setClientCep("");
+      setClientAddress("");
+      setClientAddressNum("");
+      setClientAddressComp("");
+      setClientAddressBairro("");
+      setClientAddressCidade("");
+      setClientAddressUF("");
+      setAcceptedRules(false);
 
-      // Trigger automatic receipt generation & WhatsApp redirect
-      generatePDFOfBooking(newBooking);
+      // Trigger standard local download
+      generatePDFOfBooking(newBooking, false);
       sendToWhatsApp(newBooking);
-    }, 2000);
+    } catch (e: any) {
+      console.error("Error submitting booking:", e);
+      setIsSubmitting(false);
+      alert("Erro ao registrar orçamento: " + e.message);
+    }
   };
 
   const handleCancelBooking = (id: string) => {
@@ -594,7 +770,7 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-72 overflow-y-auto pr-1">
-                {EQUIPMENT_LIST.map((equip) => {
+                {dbEquipments.map((equip) => {
                   const isChecked = selectedEquipIds.includes(equip.id);
                   return (
                     <div
@@ -686,75 +862,218 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
               </div>
             </div>
 
-            {/* Step 5: Personal details form */}
+            {/* Step 5: Personal & Contract details form */}
             <div>
               <div className="flex items-center gap-2 mb-4">
                 <span className="font-mono text-xs text-brand-red font-bold px-2 py-0.5 bg-brand-red/10 border border-brand-red/20 rounded">05</span>
                 <label className="font-display font-medium text-lg uppercase tracking-wider text-stone-200">
-                  Seus Dados de Contato
+                  Dados de Contato & Contrato de Locação
                 </label>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest block mb-1.5">
+                      Nome / Razão Social
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ex: Amanda Silva ou Empresa LTDA"
+                      value={clientName}
+                      onChange={(e) => setClientName(e.target.value)}
+                      className="w-full bg-stone-950 border border-white/10 rounded px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-brand-red"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest block mb-1.5 flex justify-between">
+                      <span>E-mail</span>
+                      {emailError && <span className="text-red-500 normal-case">{emailError}</span>}
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="amanda@exemplo.com"
+                      value={clientEmail}
+                      onChange={(e) => {
+                        setClientEmail(e.target.value);
+                        setEmailError("");
+                      }}
+                      className="w-full bg-stone-950 border border-white/10 rounded px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-brand-red"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest block mb-1.5 flex justify-between">
+                      <span>WhatsApp / Telefone</span>
+                      {phoneError && <span className="text-red-500 normal-case">{phoneError}</span>}
+                    </label>
+                    <input
+                      type="tel"
+                      required
+                      placeholder="(11) 99999-9999"
+                      value={clientPhone}
+                      onChange={(e) => handlePhoneChange(e.target.value)}
+                      className="w-full bg-stone-950 border border-white/10 rounded px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-brand-red font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 border-t border-white/5 pt-4">
+                  <div>
+                    <label className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest block mb-1.5">
+                      CPF ou CNPJ (Contrato)
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ex: 000.000.000-00"
+                      value={clientCpfCnpj}
+                      onChange={(e) => handleCpfCnpjChange(e.target.value)}
+                      className="w-full bg-stone-950 border border-white/10 rounded px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-brand-red font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest block mb-1.5">
+                      CEP
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="00000-000"
+                      value={clientCep}
+                      onChange={(e) => handleCepChange(e.target.value)}
+                      className="w-full bg-stone-950 border border-white/10 rounded px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-brand-red font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest block mb-1.5">
+                      Endereço (Rua/Av)
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Logradouro"
+                      value={clientAddress}
+                      onChange={(e) => setClientAddress(e.target.value)}
+                      className="w-full bg-stone-950 border border-white/10 rounded px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-brand-red"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+                  <div className="sm:col-span-1">
+                    <label className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest block mb-1.5">
+                      Número
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="123"
+                      value={clientAddressNum}
+                      onChange={(e) => setClientAddressNum(e.target.value)}
+                      className="w-full bg-stone-950 border border-white/10 rounded px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-brand-red font-mono"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-1">
+                    <label className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest block mb-1.5">
+                      Complemento
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Apto/Sala"
+                      value={clientAddressComp}
+                      onChange={(e) => setClientAddressComp(e.target.value)}
+                      className="w-full bg-stone-950 border border-white/10 rounded px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-brand-red"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-1">
+                    <label className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest block mb-1.5">
+                      Bairro
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Bairro"
+                      value={clientAddressBairro}
+                      onChange={(e) => setClientAddressBairro(e.target.value)}
+                      className="w-full bg-stone-950 border border-white/10 rounded px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-brand-red"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-1">
+                    <label className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest block mb-1.5">
+                      Cidade
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Cidade"
+                      value={clientAddressCidade}
+                      onChange={(e) => setClientAddressCidade(e.target.value)}
+                      className="w-full bg-stone-950 border border-white/10 rounded px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-brand-red"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-1">
+                    <label className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest block mb-1.5">
+                      Estado (UF)
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      maxLength={2}
+                      placeholder="SP"
+                      value={clientAddressUF}
+                      onChange={(e) => setClientAddressUF(e.target.value)}
+                      className="w-full bg-stone-950 border border-white/10 rounded px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-brand-red font-mono uppercase"
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-2">
                   <label className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest block mb-1.5">
-                    Nome Completo
+                    Resumo do Projeto / Anotações (Opcional)
                   </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ex: Amanda Silva"
-                    value={clientName}
-                    onChange={(e) => setClientName(e.target.value)}
-                    className="w-full bg-stone-950 border border-white/10 rounded px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-brand-red"
+                  <textarea
+                    rows={2}
+                    placeholder="Conte para nós as tochas necessárias, se vai usar água, assistente ou cor específica de fundo..."
+                    value={projectNotes}
+                    onChange={(e) => setProjectNotes(e.target.value)}
+                    className="w-full bg-stone-950 border border-white/10 rounded px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-brand-red resize-none"
                   />
                 </div>
 
-                <div>
-                  <label className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest block mb-1.5 flex justify-between">
-                    <span>E-mail</span>
-                    {emailError && <span className="text-red-500 normal-case">{emailError}</span>}
+                {/* Terms Acceptance checkbox */}
+                <div className="bg-stone-950 border border-white/5 p-4 rounded-sm space-y-3 mt-4">
+                  <label className="flex items-start gap-3 cursor-pointer group">
+                    <input 
+                      type="checkbox" 
+                      checked={acceptedRules}
+                      onChange={(e) => setAcceptedRules(e.target.checked)}
+                      className="mt-1 accent-[#d93838]" 
+                    />
+                    <span className="text-xs text-zinc-300 leading-relaxed font-sans group-hover:text-white transition-colors">
+                      Declaro que li, concordo e aceito todas as regras do estúdio e os termos do{" "}
+                      <span className="text-[#d93838] underline font-semibold">Contrato de Locação do Espaço</span>.
+                    </span>
                   </label>
-                  <input
-                    type="email"
-                    required
-                    placeholder="amanda@exemplo.com"
-                    value={clientEmail}
-                    onChange={(e) => {
-                      setClientEmail(e.target.value);
-                      setEmailError("");
-                    }}
-                    className="w-full bg-stone-950 border border-white/10 rounded px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-brand-red"
-                  />
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setIsRulesModalOpen(true)}
+                      className="text-[10px] font-mono uppercase text-[#d93838] hover:text-white border border-[#d93838]/30 hover:border-white/20 bg-[#d93838]/5 px-3 py-1.5 rounded-sm transition-all"
+                    >
+                      Ler Regulamento & Contrato Completo
+                    </button>
+                  </div>
                 </div>
-
-                <div>
-                  <label className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest block mb-1.5 flex justify-between">
-                    <span>WhatsApp / Telefone</span>
-                    {phoneError && <span className="text-red-500 normal-case">{phoneError}</span>}
-                  </label>
-                  <input
-                    type="tel"
-                    required
-                    placeholder="(11) 99999-9999"
-                    value={clientPhone}
-                    onChange={(e) => handlePhoneChange(e.target.value)}
-                    className="w-full bg-stone-950 border border-white/10 rounded px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-brand-red font-mono"
-                  />
-                </div>
-              </div>
-
-              <div className="mt-4">
-                <label className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest block mb-1.5">
-                  Resumo do Projeto / Anotações (Opcional)
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Conte para nós as tochas necessárias, se vai usar água, assistente ou cor específica de fundo..."
-                  value={projectNotes}
-                  onChange={(e) => setProjectNotes(e.target.value)}
-                  className="w-full bg-stone-950 border border-white/10 rounded px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-brand-red resize-none"
-                />
               </div>
             </div>
 
@@ -805,7 +1124,7 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
                       Hardware Adicionado ({selectedEquipIds.length})
                     </span>
                     {selectedEquipIds.map(id => {
-                      const eq = EQUIPMENT_LIST.find(item => item.id === id);
+                      const eq = dbEquipments.find(item => item.id === id);
                       if (!eq) return null;
                       return (
                         <div key={id} className="flex justify-between text-[11px] text-zinc-400 font-mono font-light">
@@ -1041,6 +1360,17 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
               <div className="flex flex-col xl:flex-row gap-2 mt-4">
                 <button
                   type="button"
+                  onClick={() => {
+                    setSubmittedBooking(null);
+                    window.dispatchEvent(new CustomEvent("open-customer-panel", { detail: { booking: submittedBooking } }));
+                  }}
+                  className="w-full flex items-center justify-center gap-1.5 bg-brand-red hover:bg-red-700 text-white font-mono text-[10px] sm:text-xs uppercase tracking-widest py-3.5 rounded-sm transition-all duration-300 cursor-pointer shadow active:scale-95 font-bold"
+                >
+                  <CreditCard size={13} />
+                  Pagar Sinal R$100 via InfinitePay
+                </button>
+                <button
+                  type="button"
                   onClick={() => sendToWhatsApp(submittedBooking)}
                   className="w-full flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-mono text-[10px] sm:text-xs uppercase tracking-widest py-3.5 rounded-sm transition-all duration-300 cursor-pointer shadow active:scale-95"
                 >
@@ -1055,15 +1385,131 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
                   <FileText size={13} />
                   Baixar PDF Recibo
                 </button>
-                <button
+              </div>
+
+            </motion.div>
+          </motion.div>
+        )}
+
+        {isRulesModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/95 backdrop-blur-md z-50 flex items-center justify-center p-4 font-sans"
+          >
+            <motion.div
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.95 }}
+              className="bg-[#111] border border-white/10 p-6 sm:p-8 rounded-sm max-w-3xl w-full h-[85vh] flex flex-col relative shadow-2xl"
+            >
+              <div className="border-b border-white/5 pb-3 mb-4 flex justify-between items-center">
+                <div>
+                  <span className="font-mono text-[9px] text-[#d93838] uppercase tracking-widest font-bold">Documento Oficial</span>
+                  <h4 className="font-display font-black text-lg text-white uppercase">Contrato de Locação & Regras do Espaço</h4>
+                </div>
+                <button 
                   type="button"
-                  onClick={() => setSubmittedBooking(null)}
-                  className="w-full bg-stone-900 border border-white/5 hover:bg-neutral-800 text-zinc-300 font-mono text-[10px] sm:text-xs uppercase tracking-widest py-3.5 rounded-sm transition-all duration-300 cursor-pointer shadow active:scale-95 text-center"
+                  onClick={() => setIsRulesModalOpen(false)}
+                  className="text-zinc-400 hover:text-white font-mono text-xs uppercase"
                 >
-                  Fechar
+                  Fechar [X]
                 </button>
               </div>
 
+              <div className="flex-1 overflow-y-auto pr-2 space-y-6 text-xs text-zinc-300 leading-relaxed font-sans">
+                <div className="text-center border-b border-white/5 pb-4">
+                  <h5 className="font-display font-bold text-sm text-white uppercase">CONTRATO DE LOCAÇÃO DE ESPAÇO FÍSICO – ESTÚDIO FOTOGRÁFICO</h5>
+                  <p className="font-mono text-[10px] text-[#d93838] mt-1">ESTÚDIO TRIÂNGULO • SÃO PAULO – SP</p>
+                </div>
+
+                <div className="space-y-2">
+                  <h6 className="font-display font-bold text-xs text-white uppercase border-l-2 border-[#d93838] pl-2">IDENTIFICAÇÃO DAS PARTES</h6>
+                  <p><strong>LOCADOR:</strong> Jeferson souza gomes, inscrito(a) no CPF/CNPJ sob nº 230.681.078-81 / 17.351.213/0001-60, com endereço em Largo do Paissandu, 72, Conj. 1803, São Paulo – SP, doravante denominado simplesmente <strong>LOCADOR</strong>.</p>
+                  <p><strong>LOCATÁRIO:</strong> O solicitante da reserva, cujos dados foram fornecidos no formulário de agendamento (Nome/Razão Social, CPF/CNPJ, Telefone, E-mail, Endereço completo), doravante denominado simplesmente <strong>LOCATÁRIO</strong>.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <h6 className="font-display font-bold text-xs text-white uppercase border-l-2 border-[#d93838] pl-2">CLÁUSULA PRIMEIRA – DO OBJETO</h6>
+                  <p>1.1. O presente instrumento tem por objeto a <strong>locação temporária do espaço físico</strong> do estúdio fotográfico de titularidade do LOCADOR (doravante "Estúdio"), pelo período e condições estipulados no agendamento.</p>
+                  <p>1.2. A locação ora pactuada compreende exclusivamente o uso do espaço físico e dos equipamentos e acessórios eventualmente relacionados no check-out, disponibilizados pelo LOCADOR para utilização durante o período contratado.</p>
+                  <p>1.3. O LOCATÁRIO utilizará o Espaço exclusivamente para fins de <strong>produção fotográfica e/ou audiovisual de natureza lícita</strong>, sendo vedado qualquer outro uso sem autorização expressa e por escrito do LOCADOR.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <h6 className="font-display font-bold text-xs text-white uppercase border-l-2 border-[#d93838] pl-2">CLÁUSULA SEGUNDA – DA NATUREZA JURÍDICA DA RELAÇÃO</h6>
+                  <p>2.1. O presente contrato é de natureza estritamente <strong>civil-locatícia</strong>, regido pelo Código Civil Brasileiro (Lei nº 10.406/2002) e pela Lei do Inquilinato (Lei nº 8.245/1991) no que couber, não gerando entre as partes qualquer tipo de relação de emprego, sociedade, representação comercial, franquia, parceria ou associação, de qualquer natureza.</p>
+                  <p>2.2. <strong>Inexistência de vínculo empregatício:</strong> Fica expressamente declarado entre as partes a total <strong>ausência de vínculo empregatício</strong>, subordinação hierárquica, pessoalidade ou habitualidade que caracterize relação de trabalho nos termos da Consolidação das Leis do Trabalho (CLT). O LOCATÁRIO exercerá suas atividades com plena <strong>autonomia técnica, criativa e operacional</strong>, não estando sujeito a ordens, fiscalização, metas ou controle do LOCADOR quanto ao conteúdo, forma ou resultado de seu trabalho.</p>
+                  <p>2.3. O LOCADOR não assume qualquer responsabilidade pelas atividades profissionais exercidas pelo LOCATÁRIO dentro do Espaço, incluindo, mas não se limitando a: serviços prestados a terceiros, acordos comerciais firmados pelo LOCATÁRIO, qualidade dos serviços por ele executados, cumprimento de obrigações fiscais, previdenciárias ou trabalhistas do LOCATÁRIO.</p>
+                  <p>2.4. <strong>Ausência de participação nos ganhos:</strong> O LOCADOR <strong>não recebe, não participa e não aufere</strong>, a qualquer título, percentual, comissão, margem, participação nos lucros ou qualquer outra forma de remuneração variável vinculada ao faturamento, receita ou resultado financeiro obtido pelo LOCATÁRIO em decorrência das atividades por ele desenvolvidas. A contrapartida do LOCADOR limita-se, de forma fixa e exclusiva, ao valor do aluguel estabelecido neste instrumento.</p>
+                  <p>2.5. O LOCATÁRIO é o único e exclusivo responsável pelo recolhimento de todos os tributos, contribuições previdenciárias (INSS), impostos (IRPF, IRPJ, ISS, etc.) e demais encargos legais e sociais decorrentes de sua atividade, sendo vedado ao LOCADOR qualquer responsabilização nesse sentido.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <h6 className="font-display font-bold text-xs text-white uppercase border-l-2 border-[#d93838] pl-2">CLÁUSULA TERCEIRA – DO PRAZO</h6>
+                  <p>3.1. A presente locação terá a duração de horas e período informados e validados no momento da confirmação do agendamento, devendo ser rigorosamente respeitados os horários de início e término.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <h6 className="font-display font-bold text-xs text-white uppercase border-l-2 border-[#d93838] pl-2">CLÁUSULA QUARTA – DO VALOR E FORMA DE PAGAMENTO</h6>
+                  <p>4.1. Pela locação do Espaço, o LOCATÁRIO pagará ao LOCADOR o valor correspondente ao cálculo total do simulador, incluindo os equipamentos adicionais escolhidos.</p>
+                  <p>4.2. Para garantia e bloqueio definitivo do horário na agenda, o LOCATÁRIO deverá efetuar o pagamento do sinal de reserva estipulado (R$ 100,00) via Pix/InfinitePay imediatamente, ou optar pelo pagamento integral.</p>
+                  <p>4.3. O valor fixo acordado é a <strong>única e total contrapartida financeira</strong> devida ao LOCADOR, confirmando a inexistência de qualquer remuneração variável, participação nos resultados ou comissão sobre os ganhos do LOCATÁRIO, conforme declarado na Cláusula Segunda.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <h6 className="font-display font-bold text-xs text-white uppercase border-l-2 border-[#d93838] pl-2">CLÁUSULA QUINTA – DAS OBRIGAÇÕES DO LOCADOR</h6>
+                  <p>Compete ao LOCADOR: Disponibilizar o Espaço limpo, organizado e em perfeitas condições de uso na data e horário acordados; Garantir o pleno funcionamento dos equipamentos relacionados; Zelar pela segurança das instalações do Estúdio; Não intervir ou interferir nas atividades profissionais do LOCATÁRIO durante o período de locação.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <h6 className="font-display font-bold text-xs text-white uppercase border-l-2 border-[#d93838] pl-2">CLÁUSULA SEXTA – DAS OBRIGAÇÕES DO LOCATÁRIO</h6>
+                  <p>Compete ao LOCATÁRIO:</p>
+                  <p>a) Utilizar o Espaço e os equipamentos disponibilizados com <strong>zelo, cuidado e responsabilidade</strong>, devolvendo-os ao término da locação nas mesmas condições em que os recebeu;</p>
+                  <p>b) Respeitar rigorosamente o horário contratado, sendo cobrado valor adicional por hora excedente no montante do valor hora vigente;</p>
+                  <p>c) Não sublocar, ceder ou emprestar o Espaço a terceiros sem autorização prévia e por escrito do LOCADOR;</p>
+                  <p>d) Arcar com todos os danos causados aos bens, instalações e equipamentos do LOCADOR, sejam eles provocados pelo próprio LOCATÁRIO, por seus clientes, assistentes ou qualquer pessoa por ele introduzida no Espaço;</p>
+                  <p>e) Cumprir todas as normas de segurança do Estúdio e respeitar as demais locações agendadas;</p>
+                  <p>f) Responsabilizar-se integralmente pelos contratos firmados com seus próprios clientes e pela qualidade dos serviços por ele prestados;</p>
+                  <p>g) Não realizar obras, modificações estruturais ou fixações permanentes no Espaço sem autorização expressa do LOCADOR;</p>
+                  <p>h) Respeitar as normas de conduta do Estúdio descritas no Regulamento Interno.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <h6 className="font-display font-bold text-xs text-white uppercase border-l-2 border-[#d93838] pl-2">CLÁUSULA SÉTIMA – DA RESPONSABILIDADE CIVIL</h6>
+                  <p>7.1. O LOCADOR <strong>não se responsabiliza</strong> por quaisquer danos, diretos ou indiretos, causados a terceiros (incluindo clientes do LOCATÁRIO) em decorrência das atividades exercidas pelo LOCATÁRIO dentro do Espaço.</p>
+                  <p>7.2. O LOCATÁRIO é o único responsável civil e penalmente por todos os atos praticados por ele, por seus clientes, colaboradores, assistentes e qualquer pessoa por ele convidada ao Espaço durante o período de locação.</p>
+                  <p>7.3. Em caso de acidente, dano material ou imaterial, ou qualquer sinistro ocorrido durante o período de locação, o LOCATÁRIO se responsabiliza integralmente pelo ressarcimento, isentando o LOCADOR de qualquer ônus.</p>
+                  <p>7.4. O LOCADOR não se responsabiliza pela guarda de pertences, equipamentos ou materiais do LOCATÁRIO ou de seus clientes deixados no Espaço antes, durante ou após o período de locação.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <h6 className="font-display font-bold text-xs text-white uppercase border-l-2 border-[#d93838] pl-2">CLÁUSULA DÉCIMA – DO FORO E LEGISLAÇÃO APLICÁVEL</h6>
+                  <p>10.1. As partes elegem o <strong>Foro da Comarca de São Paulo – SP</strong> para dirimir quaisquer dúvidas ou litígios decorrentes do presente instrumento, com renúncia expressa a qualquer outro, por mais privilegiado que seja.</p>
+                  <p>10.2. O presente contrato é geográfico pelo <strong>Código Civil Brasileiro (Lei nº 10.406/2002)</strong> e, subsidiariamente, pela <strong>Lei do Inquilinato (Lei nº 8.245/1991)</strong> no que couber.</p>
+                </div>
+              </div>
+
+              <div className="border-t border-white/5 pt-4 mt-4 flex flex-col sm:flex-row gap-3 justify-end">
+                <button
+                  type="button"
+                  onClick={() => setIsRulesModalOpen(false)}
+                  className="bg-stone-900 border border-white/10 hover:border-white/20 text-zinc-400 hover:text-white px-5 py-2.5 rounded-sm font-mono text-[11px] uppercase"
+                >
+                  Voltar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAcceptedRules(true);
+                    setIsRulesModalOpen(false);
+                  }}
+                  className="bg-[#d93838] hover:bg-red-700 text-white px-6 py-2.5 rounded-sm font-mono text-[11px] uppercase font-bold"
+                >
+                  Li e Concordo com os Termos
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}

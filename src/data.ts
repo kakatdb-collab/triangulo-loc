@@ -5,10 +5,13 @@
 
 import { StudioSpace, Equipment, PortfolioItem, Testimonial } from "./types";
 
+import studioHero from "./assets/images/studio_hero_1779639642169.png";
+import triangleConcept from "./assets/images/triangle_concept_1779639657792.png";
+
 // Expose paths to assets safely
 export const ASSETS = {
-  studioHero: "/src/assets/images/studio_hero_1779639642169.png",
-  triangleConcept: "/src/assets/images/triangle_concept_1779639657792.png",
+  studioHero,
+  triangleConcept,
   prismaStudioFirst: "https://triangulofotoclub.com.br/locacao/estudio/01-Escritorio.webp",
 };
 

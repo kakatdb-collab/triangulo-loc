@@ -56,6 +56,18 @@ export interface Booking {
   selectedEquipIds: string[];
   notes?: string;
   totalPrice: number;
-  status: "Pendente" | "Confirmado" | "Concluido";
+  status: "Simulada" | "Pendente" | "Reservada" | "Concluída";
   createdAt: string;
+  depositPaid?: boolean;
+  paymentTxId?: string;
+  userId?: string;
+  clientCpfCnpj?: string;
+  clientCep?: string;
+  clientAddress?: string;
+  clientAddressNum?: string;
+  clientAddressComp?: string;
+  clientAddressBairro?: string;
+  clientAddressCidade?: string;
+  clientAddressUF?: string;
+  acceptedRules?: boolean;
 }

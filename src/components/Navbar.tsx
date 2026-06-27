@@ -4,12 +4,31 @@
  */
 
 import { useState, useEffect } from "react";
-import { Camera, Calendar, Layers, Menu, X } from "lucide-react";
+import { Camera, Calendar, Layers, Menu, X, User } from "lucide-react";
+import { auth, onAuthStateChanged, doc, getDoc, db } from "../lib/firebase";
 
 export default function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeSection, setActiveSection] = useState("hero");
+  const [loggedInUser, setLoggedInUser] = useState<any>(null);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        const docRef = doc(db, "users", user.uid);
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+          setLoggedInUser({ ...user, ...snap.data() });
+        } else {
+          setLoggedInUser(user);
+        }
+      } else {
+        setLoggedInUser(null);
+      }
+    });
+    return () => unsub();
+  }, []);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -104,6 +123,14 @@ export default function Navbar() {
             <Calendar size={14} className="animate-pulse" />
             Agendar
           </a>
+
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent("open-customer-panel"))}
+            className="flex items-center gap-2 border border-white/10 hover:border-brand-red text-white hover:bg-brand-red/10 font-mono text-xs uppercase tracking-widest px-4 py-2.5 rounded-sm transition-all duration-300 active:scale-95 cursor-pointer"
+          >
+            <User size={14} />
+            {loggedInUser ? (loggedInUser.name || "Painel") : "Login / Painel"}
+          </button>
         </div>
 
         {/* Mobile menu toggle */}
@@ -135,7 +162,7 @@ export default function Navbar() {
               </li>
             ))}
           </ul>
-          <div className="px-6">
+          <div className="px-6 flex flex-col gap-3">
             <a
               href="#reservar"
               onClick={() => setMobileMenuOpen(false)}
@@ -144,6 +171,16 @@ export default function Navbar() {
               <Calendar size={14} />
               Reservar Horário
             </a>
+            <button
+              onClick={() => {
+                setMobileMenuOpen(false);
+                window.dispatchEvent(new CustomEvent("open-customer-panel"));
+              }}
+              className="flex justify-center items-center gap-2 w-full border border-white/10 text-white font-mono text-xs uppercase tracking-widest py-3 rounded-sm transition-all duration-300 hover:bg-white/5"
+            >
+              <User size={14} />
+              {loggedInUser ? `Painel (${loggedInUser.name || "Cliente"})` : "Área do Cliente / Login"}
+            </button>
           </div>
         </div>
       )}
