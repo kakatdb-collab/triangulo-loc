@@ -232,7 +232,7 @@ export default function Hero() {
             animate="visible"
             className="text-zinc-300 font-sans text-sm sm:text-lg md:text-xl font-light tracking-wide max-w-2xl leading-relaxed mb-12"
           >
-            O melhor <strong className="text-white font-medium">estúdio de locação barato</strong> no <strong className="text-white font-medium">centro de São Paulo (SP)</strong>, climatizado e <strong className="text-white font-medium">próximo ao metrô</strong>. Conforto, praticidade e liberdade criativa com iluminação inclusa.
+            O <strong className="text-white font-medium">estúdio mais completo, barato e acessível</strong> no <strong className="text-white font-medium">Centro de São Paulo</strong> (Largo do Paissandu, próximo ao metrô). 120m² climatizados com ciclorama em U, camarim e iluminação inclusa.
           </motion.p>
 
           {/* Buttons & Call to Actions */}

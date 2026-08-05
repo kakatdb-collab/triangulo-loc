@@ -92,6 +92,55 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok", smtp_configured: !!process.env.SMTP_USER });
 });
 
+// Explicit routes for SEO & GEO engines
+app.get("/robots.txt", (req, res) => {
+  res.type("text/plain");
+  res.send(`User-agent: *\nAllow: /\n\nSitemap: https://trianguloestudio.online/sitemap.xml\n`);
+});
+
+app.get("/sitemap.xml", (req, res) => {
+  res.type("application/xml");
+  res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://trianguloestudio.online/</loc>
+    <lastmod>2026-08-05</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://trianguloestudio.online/#espacos</loc>
+    <lastmod>2026-08-05</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://trianguloestudio.online/#agendamento</loc>
+    <lastmod>2026-08-05</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://trianguloestudio.online/#planos</loc>
+    <lastmod>2026-08-05</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://trianguloestudio.online/#portfolio</loc>
+    <lastmod>2026-08-05</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://trianguloestudio.online/#contato</loc>
+    <lastmod>2026-08-05</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+</urlset>`);
+});
+
 // API endpoint to process welcome email for new user
 app.post("/api/send-welcome-email", async (req, res) => {
   const { email, name } = req.body;
@@ -120,7 +169,7 @@ app.post("/api/send-welcome-email", async (req, res) => {
             </ul>
             <p style="margin-top: 30px;">Estamos ansiosos para receber suas produções e dar vida às suas criações em nosso espaço climatizado de 120m² no centro de São Paulo!</p>
             <div style="text-align: center; margin: 40px 0 20px 0;">
-              <a href="${process.env.APP_URL || "http://localhost:3000"}" style="background-color: #d93838; color: #ffffff; text-decoration: none; padding: 14px 30px; font-weight: bold; font-size: 12px; letter-spacing: 0.2em; text-transform: uppercase; border-radius: 2px; font-family: monospace;">Acessar Meu Painel</a>
+              <a href="${process.env.APP_URL || "https://trianguloestudio.online"}" style="background-color: #d93838; color: #ffffff; text-decoration: none; padding: 14px 30px; font-weight: bold; font-size: 12px; letter-spacing: 0.2em; text-transform: uppercase; border-radius: 2px; font-family: monospace;">Acessar Meu Painel</a>
             </div>
           </td>
         </tr>
@@ -222,7 +271,7 @@ app.post("/api/send-booking-email", async (req, res) => {
           ` : ""}
 
           <div style="text-align: center; margin: 35px 0 10px 0;">
-            <a href="${process.env.APP_URL || "http://localhost:3000"}" style="background-color: #d93838; color: #ffffff; text-decoration: none; padding: 13px 25px; font-weight: bold; font-size: 11px; letter-spacing: 0.25em; text-transform: uppercase; border-radius: 2px; font-family: monospace;">Ir para Minhas Reservas</a>
+            <a href="${process.env.APP_URL || "https://trianguloestudio.online"}" style="background-color: #d93838; color: #ffffff; text-decoration: none; padding: 13px 25px; font-weight: bold; font-size: 11px; letter-spacing: 0.25em; text-transform: uppercase; border-radius: 2px; font-family: monospace;">Ir para Minhas Reservas</a>
           </div>
         </td>
       </tr>
@@ -304,7 +353,7 @@ app.post("/api/payment/infinitepay", async (req, res) => {
 
   try {
     const amountInCents = Math.round(amount * 100);
-    const hostUrl = process.env.APP_URL || "http://localhost:3000";
+    const hostUrl = process.env.APP_URL || "https://trianguloestudio.online";
     
     // Construct redirect URLs pointing back to client-side checkout handlers
     const redirectUrl = planId
@@ -359,7 +408,7 @@ app.post("/api/payment/infinitepay", async (req, res) => {
     
     // Smooth fallback: generate a mock checkout flow that behaves exactly like the real checkout link so the user can test their app beautifully!
     const txId = "IPY-" + Math.floor(10000000 + Math.random() * 90000000);
-    const hostUrl = process.env.APP_URL || "http://localhost:3000";
+    const hostUrl = process.env.APP_URL || "https://trianguloestudio.online";
     const redirectUrl = planId
       ? `${hostUrl}?paySuccess=true&planId=${planId}&cycleMonths=${cycleMonths}&transaction_nsu=${txId}&order_nsu=${orderNsu}&capture_method=pix`
       : `${hostUrl}?paySuccess=true&bookingId=${orderNsu}&transaction_nsu=${txId}&order_nsu=${orderNsu}&capture_method=pix`;

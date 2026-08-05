@@ -1,0 +1,6 @@
+# robots.txt for https://trianguloestudio.online/
+User-agent: *
+Allow: /
+
+# Sitemaps
+Sitemap: https://trianguloestudio.online/sitemap.xml
