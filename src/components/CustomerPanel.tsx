@@ -16,7 +16,7 @@ import {
   auth, db, signInWithEmailAndPassword, createUserWithEmailAndPassword, 
   sendPasswordResetEmail, signOut, onAuthStateChanged, doc, setDoc, getDoc, updateDoc, 
   collection, getDocs, query, where, orderBy, addDoc, onSnapshot, FirebaseUser,
-  handleFirestoreError, OperationType
+  handleFirestoreError, OperationType, cleanFirestoreData
 } from "../lib/firebase";
 import { logSecurityEvent, logActivityEvent, checkRateLimit, SecurityLog, ActivityLog, BehaviorLog } from "../lib/analytics";
 import { VitalMetricLog } from "../lib/vitals";

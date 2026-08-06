@@ -4,7 +4,7 @@
  */
 
 import { onLCP, onCLS, onFCP, onTTFB, onINP, Metric } from 'web-vitals';
-import { db, collection, addDoc } from './firebase';
+import { db, collection, addDoc, cleanFirestoreData } from './firebase';
 
 export interface VitalMetricLog {
   id?: string;
@@ -49,7 +49,7 @@ export function getCachedVitals(): VitalMetricLog[] {
 async function sendMetricToFirestore(log: VitalMetricLog) {
   vitalsCache.push(log);
   try {
-    await addDoc(collection(db, "vitals_logs"), log);
+    await addDoc(collection(db, "vitals_logs"), cleanFirestoreData(log));
     console.log(`[WEB VITALS MONITOR] Logged ${log.metricName}: ${log.value}${log.unit} (${log.rating.toUpperCase()})`);
   } catch (err) {
     // Silent fail if permissions or offline

@@ -24,7 +24,7 @@ import {
 import { jsPDF } from "jspdf";
 import { STUDIO_SPACES, EQUIPMENT_LIST } from "../data";
 import { StudioSpace, Equipment, Booking } from "../types";
-import { db, auth, doc, setDoc, onSnapshot, collection, handleFirestoreError, OperationType } from "../lib/firebase";
+import { db, auth, doc, setDoc, onSnapshot, collection, handleFirestoreError, OperationType, cleanFirestoreData } from "../lib/firebase";
 import { logActivityEvent } from "../lib/analytics";
 
 interface BookingSystemProps {
@@ -567,9 +567,9 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
       saveBookingsToLocal(updated);
 
       // 2. Save to Firestore (Real persistence)
-      await setDoc(doc(db, "bookings", code), {
+      await setDoc(doc(db, "bookings", code), cleanFirestoreData({
         ...newBooking
-      });
+      }));
 
       // Log reservation creation activity event
       logActivityEvent(

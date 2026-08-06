@@ -3,7 +3,7 @@
  * Studio Triângulo Security & Analytics Engine
  */
 
-import { db, collection, addDoc, doc, setDoc, getDocs, query, orderBy, limit, onSnapshot } from "./firebase";
+import { db, collection, addDoc, doc, setDoc, getDocs, query, orderBy, limit, onSnapshot, cleanFirestoreData } from "./firebase";
 
 export interface SecurityLog {
   id?: string;
@@ -80,7 +80,7 @@ export async function logSecurityEvent(
   };
 
   try {
-    await addDoc(collection(db, "security_logs"), log);
+    await addDoc(collection(db, "security_logs"), cleanFirestoreData(log));
     console.warn(`[SECURITY AUDIT LOG - ${severity.toUpperCase()}] ${type}:`, details);
   } catch (err) {
     console.error("Failed to persist security log:", err);
@@ -105,7 +105,7 @@ export async function logActivityEvent(
   };
 
   try {
-    await addDoc(collection(db, "activity_logs"), log);
+    await addDoc(collection(db, "activity_logs"), cleanFirestoreData(log));
   } catch (err) {
     console.error("Failed to persist activity log:", err);
   }
@@ -129,7 +129,7 @@ export async function logBehaviorEvent(
   };
 
   try {
-    await addDoc(collection(db, "behavior_logs"), log);
+    await addDoc(collection(db, "behavior_logs"), cleanFirestoreData(log));
   } catch (err) {
     // Silent fail for telemetry to avoid interrupting user flow
   }

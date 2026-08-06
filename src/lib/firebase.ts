@@ -101,6 +101,22 @@ async function testConnection() {
 }
 testConnection();
 
+export function cleanFirestoreData(data: any): any {
+  if (data === null || typeof data !== 'object') {
+    return data;
+  }
+  if (Array.isArray(data)) {
+    return data.map(cleanFirestoreData);
+  }
+  const cleaned: Record<string, any> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (value !== undefined) {
+      cleaned[key] = cleanFirestoreData(value);
+    }
+  }
+  return cleaned;
+}
+
 export {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
