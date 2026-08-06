@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Users, 
@@ -17,6 +17,7 @@ import {
   FileDown
 } from "lucide-react";
 import { STUDIO_SPACES, ASSETS } from "../data";
+import { db, collection, onSnapshot } from "../lib/firebase";
 
 interface SpacesProps {
   onSelectSpace: (spaceId: string) => void;
@@ -139,11 +140,24 @@ const PRISMA_PHOTOS = [
 
 export default function Spaces({ onSelectSpace }: SpacesProps) {
   const [activePhotoIdx, setActivePhotoIdx] = useState(0);
-  const space = STUDIO_SPACES[0] || {
+  const [customSpaces, setCustomSpaces] = useState<any[]>([]);
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "spaces"), (snap) => {
+      if (!snap.empty) {
+        const list: any[] = [];
+        snap.forEach((doc) => list.push({ id: doc.id, ...doc.data() }));
+        if (list.length > 0) setCustomSpaces(list);
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  const space = customSpaces[0] || STUDIO_SPACES[0] || {
     id: "prisma",
     name: "Triângulo Estúdio",
     subtitle: "O infinito branco e iluminação profissional",
-    description: "Equipado com um ciclorama(fundo infinito) de madeira branco em 'U', pé direito de 3m, Largura 3M, Profundidade 3M e mais 3 metros de recuo, trás ainda uma estrutura aérea de trilhos para iluminação. Perfeito para editoriais de moda, campanhas publicitárias de grande porte, videoclipes e produções que necessitam de fundo infinito ou iluminação técnica avançada. O estúdio tem escritório, um espaço aconchegante e rústico tipo quarto de AirnB com visual antigo e industrial, mobília vintage e uma varanda para compor com diversos trabalhos de foto e video.",
+    description: "Equipado com um ciclorama(fundo infinito) de madeira branco em 'U', pé direito de 3m, Largura 3M, Profundidade 3M e mais 3 metros de recuo, trás ainda uma estrutura aérea de trilhos para iluminação. Perfeito para editoriais de moda, campanhas publicitárias de grande porte, videoclipes e produções que necessitam de fundo infinito ou iluminação técnica avançada.",
     hourlyRate: 100,
     halfDayRate: 400,
     fullDayRate: 700,

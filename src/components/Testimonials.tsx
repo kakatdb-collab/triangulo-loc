@@ -3,20 +3,37 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Star, Quote, ChevronLeft, ChevronRight } from "lucide-react";
 import { TESTIMONIALS } from "../data";
+import { db, collection, onSnapshot } from "../lib/firebase";
 
 export default function Testimonials() {
+  const [items, setItems] = useState(TESTIMONIALS);
   const [currentIndex, setCurrentIndex] = useState(0);
 
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "testimonials"), (snap) => {
+      if (!snap.empty) {
+        const list: any[] = [];
+        snap.forEach((doc) => {
+          list.push({ id: doc.id, ...doc.data() });
+        });
+        if (list.length > 0) {
+          setItems(list);
+        }
+      }
+    });
+    return () => unsub();
+  }, []);
+
   const handleNext = () => {
-    setCurrentIndex((currentIndex + 1) % TESTIMONIALS.length);
+    setCurrentIndex((currentIndex + 1) % items.length);
   };
 
   const handlePrev = () => {
-    setCurrentIndex((currentIndex - 1 + TESTIMONIALS.length) % TESTIMONIALS.length);
+    setCurrentIndex((currentIndex - 1 + items.length) % items.length);
   };
 
   return (
@@ -62,7 +79,7 @@ export default function Testimonials() {
             >
               {/* Star group */}
               <div className="flex justify-center gap-1 mb-6">
-                {[...Array(TESTIMONIALS[currentIndex].rating)].map((_, i) => (
+                {[...Array(items[currentIndex]?.rating || 5)].map((_, i) => (
                   <Star key={i} size={14} className="fill-brand-red text-brand-red" />
                 ))}
               </div>
@@ -72,14 +89,14 @@ export default function Testimonials() {
 
               {/* Content text */}
               <p className="text-sm sm:text-base md:text-lg text-zinc-300 font-sans font-light italic leading-relaxed mb-6">
-                "{TESTIMONIALS[currentIndex].quote}"
+                "{items[currentIndex]?.quote || ""}"
               </p>
 
               {/* Author badge layout */}
               <div className="flex items-center gap-4 text-left">
                 <img
-                  src={TESTIMONIALS[currentIndex].avatarUrl}
-                  alt={TESTIMONIALS[currentIndex].name}
+                  src={items[currentIndex]?.avatarUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200"}
+                  alt={items[currentIndex]?.name || "Cliente"}
                   loading="lazy"
                   decoding="async"
                   referrerPolicy="no-referrer"
@@ -87,10 +104,10 @@ export default function Testimonials() {
                 />
                 <div>
                   <h4 className="font-display font-bold text-sm text-white">
-                    {TESTIMONIALS[currentIndex].name}
+                    {items[currentIndex]?.name || "Cliente"}
                   </h4>
                   <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider">
-                    {TESTIMONIALS[currentIndex].role}
+                    {items[currentIndex]?.role || "Fotógrafo"}
                   </p>
                 </div>
               </div>
@@ -107,7 +124,7 @@ export default function Testimonials() {
 
         {/* Indicator dots */}
         <div className="flex justify-center gap-2 mt-8">
-          {TESTIMONIALS.map((_, idx) => (
+          {items.map((_, idx) => (
             <button
               key={idx}
               onClick={() => setCurrentIndex(idx)}

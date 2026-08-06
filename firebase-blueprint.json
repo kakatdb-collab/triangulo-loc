@@ -15,6 +15,46 @@
     "messages": {
       "schema": "Message",
       "description": "Internal chat messages between clients and administrator"
+    },
+    "testimonials": {
+      "schema": "Testimonial",
+      "description": "Client reviews and feedback"
+    },
+    "spaces": {
+      "schema": "Space",
+      "description": "Studio room spaces and specifications"
+    },
+    "cowork_plans": {
+      "schema": "CoworkPlan",
+      "description": "Subscription plans for coworking space"
+    },
+    "site_settings": {
+      "schema": "SiteSettings",
+      "description": "CMS hero text and site configuration"
+    },
+    "equipment": {
+      "schema": "Equipment",
+      "description": "Available studio gear and status"
+    },
+    "security_logs": {
+      "schema": "Log",
+      "description": "Security audit trail"
+    },
+    "activity_logs": {
+      "schema": "Log",
+      "description": "User interaction audit trail"
+    },
+    "behavior_logs": {
+      "schema": "Log",
+      "description": "Click map and user behavior logs"
+    },
+    "vitals_logs": {
+      "schema": "Log",
+      "description": "Web performance and vitals logs"
+    },
+    "test": {
+      "schema": "TestConnection",
+      "description": "Connection test doc"
     }
   },
   "entities": {

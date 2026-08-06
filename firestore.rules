@@ -51,6 +51,42 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    // Rules for Testimonials collection
+    match /testimonials/{testimonialId} {
+      allow read: if true;
+      allow create: if isLoggedIn() || true;
+      allow update, delete: if isAdmin();
+    }
+
+    // Rules for Spaces collection
+    match /spaces/{spaceId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Rules for Cowork Plans collection
+    match /cowork_plans/{planId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Rules for Site Settings collection
+    match /site_settings/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Rules for Equipment collection
+    match /equipment/{equipId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Rules for Connection test
+    match /test/{docId} {
+      allow read, write: if true;
+    }
+
     // Rules for Security Logs collection
     match /security_logs/{logId} {
       allow create: if true; // Allow client to write security alerts (e.g., failed logins)

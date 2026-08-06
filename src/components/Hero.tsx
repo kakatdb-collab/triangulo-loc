@@ -5,9 +5,11 @@
 
 "use client";
 
+import { useState, useEffect } from "react";
 import { motion } from "motion/react";
 import { ArrowDown, Play, Instagram, MapPin, Circle } from "lucide-react";
 import { ASSETS } from "../data";
+import { db, doc, onSnapshot } from "../lib/firebase";
 
 // Helper function to concatenate classes cleanly
 function cn(...classes: (string | undefined | null | boolean)[]) {
@@ -83,6 +85,34 @@ function ElegantShape({
 }
 
 export default function Hero() {
+  const [heroData, setHeroData] = useState({
+    title1: "ESTÚDIO TRIÂNGULO",
+    title2: "FOTOCLUB",
+    badge: "Espaço Criativo Premium",
+    description: "O estúdio mais completo, barato e acessível no Centro de São Paulo (Largo do Paissandu, próximo ao metrô). 120m² climatizados com ciclorama em U, camarim e iluminação inclusa.",
+    bgImage: ASSETS.studioHero,
+    btnPrimary: "RESERVAR HORÁRIO",
+    btnSecondary: "Conhecer Estúdios"
+  });
+
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, "site_settings", "hero"), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        setHeroData({
+          title1: data.title1 || "ESTÚDIO TRIÂNGULO",
+          title2: data.title2 || "FOTOCLUB",
+          badge: data.badge || "Espaço Criativo Premium",
+          description: data.description || "O estúdio mais completo, barato e acessível no Centro de São Paulo (Largo do Paissandu, próximo ao metrô). 120m² climatizados com ciclorama em U, camarim e iluminação inclusa.",
+          bgImage: data.bgImage || ASSETS.studioHero,
+          btnPrimary: data.btnPrimary || "RESERVAR HORÁRIO",
+          btnSecondary: data.btnSecondary || "Conhecer Estúdios"
+        });
+      }
+    });
+    return () => unsub();
+  }, []);
+
   const fadeUpVariants = {
     hidden: { opacity: 0, y: 30 },
     visible: (i: number) => ({
@@ -104,7 +134,7 @@ export default function Hero() {
       {/* Background Image with elegant overlay layered under geometric filters */}
       <div className="absolute inset-0 z-0">
         <img
-          src={ASSETS.studioHero}
+          src={heroData.bgImage}
           alt="Triângulo Estúdio Fotoclub Banner"
           referrerPolicy="no-referrer"
           fetchPriority="high"
@@ -199,7 +229,7 @@ export default function Hero() {
           >
             <Circle className="h-2 w-2 fill-brand-red/80 text-brand-red animate-pulse" />
             <span className="text-xs text-white/60 tracking-[0.25em] font-mono uppercase">
-              Espaço Criativo Premium
+              {heroData.badge}
             </span>
           </motion.div>
 
@@ -215,11 +245,11 @@ export default function Hero() {
               id="hero-title"
             >
               <span className="bg-clip-text text-transparent bg-gradient-to-b from-white to-zinc-400">
-                ESTÚDIO TRIÂNGULO
+                {heroData.title1}
               </span>
               <br />
               <span className="block mt-2 bg-clip-text text-transparent bg-gradient-to-r from-brand-red via-red-300 to-amber-500 font-light tracking-[0.1em] text-3xl sm:text-5xl md:text-7xl">
-                FOTOCLUB
+                {heroData.title2}
               </span>
             </h1>
           </motion.div>
@@ -232,7 +262,7 @@ export default function Hero() {
             animate="visible"
             className="text-zinc-300 font-sans text-sm sm:text-lg md:text-xl font-light tracking-wide max-w-2xl leading-relaxed mb-12"
           >
-            O <strong className="text-white font-medium">estúdio mais completo, barato e acessível</strong> no <strong className="text-white font-medium">Centro de São Paulo</strong> (Largo do Paissandu, próximo ao metrô). 120m² climatizados com ciclorama em U, camarim e iluminação inclusa.
+            {heroData.description}
           </motion.p>
 
           {/* Buttons & Call to Actions */}
@@ -250,7 +280,7 @@ export default function Hero() {
               id="btn-reservar-horario"
             >
               <span className="absolute inset-0 bg-white scale-x-0 group-hover:scale-x-100 origin-center transition-transform duration-500 ease-out z-0" />
-              <span className="relative z-10">RESERVAR HORÁRIO</span>
+              <span className="relative z-10">{heroData.btnPrimary}</span>
             </a>
 
             {/* Secondary Option Button */}
@@ -261,7 +291,7 @@ export default function Hero() {
               <span className="relative flex items-center justify-center w-8 h-8 rounded-full border border-white/10 group-hover:border-white/30 transition-all duration-300">
                 <Play size={10} className="text-zinc-300 fill-zinc-300 group-hover:text-white" />
               </span>
-              Conhecer Estúdios
+              {heroData.btnSecondary}
             </a>
           </motion.div>
         </div>

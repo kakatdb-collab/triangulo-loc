@@ -55,7 +55,23 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, "settings/simulator");
     });
-    return () => unsub();
+
+    const unsubEquip = onSnapshot(collection(db, "equipment"), (snap) => {
+      if (!snap.empty) {
+        const list: Equipment[] = [];
+        snap.forEach((doc) => {
+          list.push({ id: doc.id, ...doc.data() } as Equipment);
+        });
+        if (list.length > 0) {
+          setDbEquipments(list);
+        }
+      }
+    });
+
+    return () => {
+      unsub();
+      unsubEquip();
+    };
   }, []);
 
   // Calendar states

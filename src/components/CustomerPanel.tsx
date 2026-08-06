@@ -10,17 +10,20 @@ import {
   Upload, Check, CreditCard, ChevronRight, Settings, Plus, Trash2, 
   Sparkles, Bell, Send, Image as ImageIcon, Key, RefreshCw, AlertTriangle,
   Activity, Eye, MousePointer, BarChart2, Download, Database, HardDrive,
-  Zap, Gauge
+  Zap, Gauge, FileText, Star, Users, UserCheck, Shield, Layers, Award,
+  Sliders, Camera, Edit3, CheckCircle2, Power, Search
 } from "lucide-react";
 import { 
   auth, db, signInWithEmailAndPassword, createUserWithEmailAndPassword, 
-  sendPasswordResetEmail, signOut, onAuthStateChanged, doc, setDoc, getDoc, updateDoc, 
+  sendPasswordResetEmail, signOut, onAuthStateChanged, doc, setDoc, getDoc, updateDoc, deleteDoc,
   collection, getDocs, query, where, orderBy, addDoc, onSnapshot, FirebaseUser,
   handleFirestoreError, OperationType, cleanFirestoreData
 } from "../lib/firebase";
 import { logSecurityEvent, logActivityEvent, checkRateLimit, SecurityLog, ActivityLog, BehaviorLog } from "../lib/analytics";
 import { VitalMetricLog } from "../lib/vitals";
 import { Booking, Equipment } from "../types";
+import RentalContractModal from "./RentalContractModal";
+import AdminAnalyticsDashboard from "./AdminAnalyticsDashboard";
 
 // Helper function to concatenate classes cleanly
 function cn(...classes: (string | undefined | null | boolean)[]) {
@@ -55,14 +58,25 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
   const [authLoading, setAuthLoading] = useState(false);
 
   // General Tabs
-  // For standard user: "bookings" | "profile" | "chat"
-  // For admin: "admin-bookings" | "admin-simulator" | "admin-chat"
+  // Client: "bookings" | "write-testimonial" | "profile" | "chat"
+  // Admin: "admin-bookings" | "admin-users" | "admin-hero" | "admin-spaces" | "admin-plans" | "admin-simulator" | "admin-testimonials" | "admin-chat" | "admin-logs"
   const [activeTab, setActiveTab] = useState<string>("bookings");
 
   // Client Dashboard Bookings & Chat states
   const [myBookings, setMyBookings] = useState<Booking[]>([]);
   const [chatMessages, setChatMessages] = useState<any[]>([]);
   const [newMsg, setNewMsg] = useState("");
+
+  // Contract Modal State
+  const [contractBooking, setContractBooking] = useState<Booking | null>(null);
+  const [isContractOpen, setIsContractOpen] = useState(false);
+
+  // Client Testimonial Form
+  const [testimonialRating, setTestimonialRating] = useState(5);
+  const [testimonialQuote, setTestimonialQuote] = useState("");
+  const [testimonialRole, setTestimonialRole] = useState("");
+  const [testimonialSuccess, setTestimonialSuccess] = useState("");
+  const [testimonialLoading, setTestimonialLoading] = useState(false);
 
   // Payment State (InfinitePay R$ 100 fixed deposit)
   const [bookingToPay, setBookingToPay] = useState<Booking | null>(null);
@@ -79,13 +93,66 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
   // Admin Panel States
   const [allBookings, setAllBookings] = useState<Booking[]>([]);
   const [bookingFilter, setBookingFilter] = useState<string>("All");
+
+  // Admin Users & Photographer Frequency State
+  const [usersList, setUsersList] = useState<any[]>([]);
+  const [userSearchQuery, setUserSearchQuery] = useState("");
+
+  // Admin Chat States
   const [adminMessagesUsers, setAdminMessagesUsers] = useState<any[]>([]);
   const [adminSelectedUserId, setAdminSelectedUserId] = useState<string>("");
   const [adminSelectedUserName, setAdminSelectedUserName] = useState<string>("");
   const [adminChatMessages, setAdminChatMessages] = useState<any[]>([]);
   const [adminNewMsg, setAdminNewMsg] = useState("");
 
-  // Admin Logs & Behavioral Telemetry States
+  // Admin CMS - Hero Banner
+  const [heroSettings, setHeroSettings] = useState({
+    title1: "ESTÚDIO TRIÂNGULO",
+    title2: "FOTOCLUB",
+    badge: "Espaço Criativo Premium",
+    description: "O estúdio mais completo, barato e acessível no Centro de São Paulo (Largo do Paissandu, próximo ao metrô). 120m² climatizados com ciclorama em U, camarim e iluminação inclusa.",
+    bgImage: "https://triangulofotoclub.com.br/locacao/estudio/03-Fundo_Infinito_ciclorama.webp",
+    btnPrimary: "RESERVAR HORÁRIO",
+    btnSecondary: "Conhecer Estúdios"
+  });
+  const [heroSaveSuccess, setHeroSaveSuccess] = useState("");
+
+  // Admin CMS - Spaces / Nosso Espaço
+  const [spacesList, setSpacesList] = useState<any[]>([]);
+  const [newSpaceName, setNewSpaceName] = useState("");
+  const [newSpaceSubtitle, setNewSpaceSubtitle] = useState("");
+  const [newSpaceDesc, setNewSpaceDesc] = useState("");
+  const [newSpaceHourly, setNewSpaceHourly] = useState(100);
+  const [newSpaceHalfDay, setNewSpaceHalfDay] = useState(400);
+  const [newSpaceFullDay, setNewSpaceFullDay] = useState(700);
+  const [newSpaceCapacity, setNewSpaceCapacity] = useState(15);
+  const [newSpaceArea, setNewSpaceArea] = useState("120m²");
+  const [newSpaceFeatures, setNewSpaceFeatures] = useState("Ciclorama em U, Camarim, Cortinas Blackout, Copa");
+  const [spaceSaveMsg, setSpaceSaveMsg] = useState("");
+
+  // Admin CMS - Coworking Plans
+  const [plansList, setPlansList] = useState<any[]>([]);
+  const [newPlanName, setNewPlanName] = useState("");
+  const [newPlanPrice, setNewPlanPrice] = useState(400);
+  const [newPlanFeatures, setNewPlanFeatures] = useState("12hrs locação, Desconto em Workshops, Fundo colorido");
+  const [planSaveMsg, setPlanSaveMsg] = useState("");
+
+  // Admin Testimonials List & Moderation
+  const [testimonialsList, setTestimonialsList] = useState<any[]>([]);
+
+  // Admin Simulator & Assets/Hardware Control
+  const [simulatorHourly, setSimulatorHourly] = useState(100);
+  const [simulatorHalfDay, setSimulatorHalfDay] = useState(400);
+  const [simulatorFullDay, setSimulatorFullDay] = useState(700);
+  const [infinitePayHandle, setInfinitePayHandle] = useState("triangulofotoclub");
+  const [equipments, setEquipments] = useState<Equipment[]>([]);
+  const [newEquipName, setNewEquipName] = useState("");
+  const [newEquipCategory, setNewEquipCategory] = useState<"lighting" | "camera" | "grip" | "scenery">("lighting");
+  const [newEquipPrice, setNewEquipPrice] = useState(50);
+  const [newEquipDesc, setNewEquipDesc] = useState("");
+  const [assetSaveMsg, setAssetSaveMsg] = useState("");
+
+  // Admin Logs & Telemetry
   const [securityLogs, setSecurityLogs] = useState<SecurityLog[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   const [behaviorLogs, setBehaviorLogs] = useState<BehaviorLog[]>([]);
@@ -94,6 +161,9 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
   const [backupLoading, setBackupLoading] = useState(false);
   const [backupMsg, setBackupMsg] = useState("");
   const [backupFiles, setBackupFiles] = useState<any[]>([]);
+
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const adminChatEndRef = useRef<HTMLDivElement>(null);
 
   const fetchBackupList = async () => {
     try {
@@ -114,7 +184,7 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
       const res = await fetch("/api/admin/trigger-backup");
       const data = await res.json();
       if (data.success) {
-        setBackupMsg(`✅ Backup exportado com sucesso! (${data.counts?.securityLogsCount || 0} logs de segurança, ${data.counts?.activityLogsCount || 0} atividades)`);
+        setBackupMsg(`✅ Backup exportado com sucesso! (${data.counts?.securityLogsCount || 0} logs)`);
         fetchBackupList();
       } else {
         setBackupMsg("❌ Erro ao exportar backup: " + (data.error || "Desconhecido"));
@@ -126,24 +196,7 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
     }
   };
 
-  // Admin Simulator Settings
-  const [simulatorHourly, setSimulatorHourly] = useState(100);
-  const [simulatorHalfDay, setSimulatorHalfDay] = useState(400);
-  const [simulatorFullDay, setSimulatorFullDay] = useState(700);
-  const [infinitePayHandle, setInfinitePayHandle] = useState("triangulofotoclub");
-  const [equipments, setEquipments] = useState<Equipment[]>([]);
-  const [newEquipName, setNewEquipName] = useState("");
-  const [newEquipCategory, setNewEquipCategory] = useState<"lighting" | "camera" | "grip" | "scenery">("lighting");
-  const [newEquipPrice, setNewEquipPrice] = useState(50);
-  const [newEquipDesc, setNewEquipDesc] = useState("");
-
-  // Real-time notification alerts
-  const [alerts, setAlerts] = useState<string[]>([]);
-
-  const chatEndRef = useRef<HTMLDivElement>(null);
-  const adminChatEndRef = useRef<HTMLDivElement>(null);
-
-  // Watch Auth
+  // Watch Auth & Firestore Real-time Listeners
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
@@ -157,7 +210,6 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
         let uPhone = "";
         let uAvatar = "";
 
-        // Strictly authorized admin emails list (no loose substring matching)
         const ADMIN_EMAILS = [
           "contato@triangulofotoclub.com.br",
           "kakatdb@gmail.com"
@@ -172,10 +224,8 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
           uPhone = uData.phone || "";
           uAvatar = uData.avatarUrl || "";
         } else {
-          // If the user registered and doesn't have a Firestore profile yet, create one
           userRole = isAdminEmail ? "admin" : "client";
-          
-          await setDoc(userDocRef, {
+          await setDoc(userDocRef, cleanFirestoreData({
             uid: currentUser.uid,
             email: currentUser.email,
             name: uName || (isAdminEmail ? "Administrador Triângulo" : "Criativo"),
@@ -183,18 +233,16 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
             role: userRole,
             avatarUrl: "",
             createdAt: new Date().toLocaleDateString("pt-BR"),
-          });
+          }));
         }
 
         setRole(userRole);
         setProfileName(uName || "Criativo");
         setProfilePhone(uPhone);
         setProfileAvatar(uAvatar);
-        
-        // Default tab based on role
-        setActiveTab(userRole === "admin" ? "admin-bookings" : "bookings");
+        setActiveTab(userRole === "admin" ? "admin-analytics" : "bookings");
 
-        // Set up real-time listener for client's own bookings
+        // Client Listeners
         if (userRole === "client") {
           const bQuery = query(
             collection(db, "bookings"),
@@ -205,14 +253,10 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
             snap.forEach((doc) => {
               list.push({ id: doc.id, ...doc.data() } as Booking);
             });
-            // Sort by creation or date desc
             list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
             setMyBookings(list);
-          }, (error) => {
-            handleFirestoreError(error, OperationType.GET, "bookings");
-          });
+          }, (error) => handleFirestoreError(error, OperationType.GET, "bookings"));
 
-          // Set up real-time chat with admin
           const chatQuery = query(
             collection(db, "messages"),
             where("senderId", "in", [currentUser.uid, "admin"]),
@@ -220,15 +264,11 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
           );
           const unsubChat = onSnapshot(chatQuery, (snap) => {
             const msgs: any[] = [];
-            snap.forEach((doc) => {
-              msgs.push({ id: doc.id, ...doc.data() });
-            });
+            snap.forEach((doc) => msgs.push({ id: doc.id, ...doc.data() }));
             msgs.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
             setChatMessages(msgs);
             setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 200);
-          }, (error) => {
-            handleFirestoreError(error, OperationType.GET, "messages");
-          });
+          }, (error) => handleFirestoreError(error, OperationType.GET, "messages"));
 
           return () => {
             unsubBookings();
@@ -240,68 +280,95 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
           const allBQuery = collection(db, "bookings");
           const unsubAllBookings = onSnapshot(allBQuery, (snap) => {
             const list: Booking[] = [];
-            snap.forEach((doc) => {
-              list.push({ id: doc.id, ...doc.data() } as Booking);
-            });
+            snap.forEach((doc) => list.push({ id: doc.id, ...doc.data() } as Booking));
             list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
             setAllBookings(list);
-          }, (error) => {
-            handleFirestoreError(error, OperationType.GET, "bookings");
-          });
+          }, (error) => handleFirestoreError(error, OperationType.GET, "bookings"));
 
-          // 2. Active users with messages
+          // 2. All Users
           const allUsersQuery = collection(db, "users");
           const unsubUsers = onSnapshot(allUsersQuery, (snap) => {
-            const usersList: any[] = [];
-            snap.forEach((doc) => {
-              const u = doc.data();
-              if (u.role !== "admin") {
-                usersList.push(u);
-              }
-            });
-            setAdminMessagesUsers(usersList);
-          }, (error) => {
-            handleFirestoreError(error, OperationType.GET, "users");
-          });
+            const usersArr: any[] = [];
+            snap.forEach((doc) => usersArr.push({ id: doc.id, ...doc.data() }));
+            setUsersList(usersArr);
+            setAdminMessagesUsers(usersArr.filter(u => u.role !== "admin"));
+          }, (error) => handleFirestoreError(error, OperationType.GET, "users"));
 
-          // 3. Security logs listener
+          // 3. Testimonials
+          const unsubTestimonials = onSnapshot(collection(db, "testimonials"), (snap) => {
+            const tList: any[] = [];
+            snap.forEach((doc) => tList.push({ id: doc.id, ...doc.data() }));
+            setTestimonialsList(tList);
+          }, (error) => handleFirestoreError(error, OperationType.GET, "testimonials"));
+
+          // 4. Spaces
+          const unsubSpaces = onSnapshot(collection(db, "spaces"), (snap) => {
+            const sList: any[] = [];
+            snap.forEach((doc) => sList.push({ id: doc.id, ...doc.data() }));
+            setSpacesList(sList);
+          }, (error) => handleFirestoreError(error, OperationType.GET, "spaces"));
+
+          // 5. Cowork Plans
+          const unsubPlans = onSnapshot(collection(db, "cowork_plans"), (snap) => {
+            const pList: any[] = [];
+            snap.forEach((doc) => pList.push({ id: doc.id, ...doc.data() }));
+            setPlansList(pList);
+          }, (error) => handleFirestoreError(error, OperationType.GET, "cowork_plans"));
+
+          // 6. Hero Settings
+          const unsubHero = onSnapshot(doc(db, "site_settings", "hero"), (snap) => {
+            if (snap.exists()) {
+              const hData = snap.data();
+              setHeroSettings({
+                title1: hData.title1 || "ESTÚDIO TRIÂNGULO",
+                title2: hData.title2 || "FOTOCLUB",
+                badge: hData.badge || "Espaço Criativo Premium",
+                description: hData.description || "",
+                bgImage: hData.bgImage || "",
+                btnPrimary: hData.btnPrimary || "RESERVAR HORÁRIO",
+                btnSecondary: hData.btnSecondary || "Conhecer Estúdios"
+              });
+            }
+          }, (error) => handleFirestoreError(error, OperationType.GET, "site_settings/hero"));
+
+          // 7. Security & Activity Logs
           const secQuery = query(collection(db, "security_logs"), orderBy("timestamp", "desc"));
           const unsubSec = onSnapshot(secQuery, (snap) => {
             const list: SecurityLog[] = [];
             snap.forEach((doc) => list.push({ id: doc.id, ...doc.data() } as SecurityLog));
             setSecurityLogs(list);
-          }, (err) => handleFirestoreError(err, OperationType.GET, "security_logs"));
+          }, (error) => handleFirestoreError(error, OperationType.GET, "security_logs"));
 
-          // 4. Activity logs listener
           const actQuery = query(collection(db, "activity_logs"), orderBy("timestamp", "desc"));
           const unsubAct = onSnapshot(actQuery, (snap) => {
             const list: ActivityLog[] = [];
             snap.forEach((doc) => list.push({ id: doc.id, ...doc.data() } as ActivityLog));
             setActivityLogs(list);
-          }, (err) => handleFirestoreError(err, OperationType.GET, "activity_logs"));
+          }, (error) => handleFirestoreError(error, OperationType.GET, "activity_logs"));
 
-          // 5. Behavior click telemetry logs listener
           const behQuery = query(collection(db, "behavior_logs"), orderBy("timestamp", "desc"));
           const unsubBeh = onSnapshot(behQuery, (snap) => {
             const list: BehaviorLog[] = [];
             snap.forEach((doc) => list.push({ id: doc.id, ...doc.data() } as BehaviorLog));
             setBehaviorLogs(list);
-          }, (err) => handleFirestoreError(err, OperationType.GET, "behavior_logs"));
+          }, (error) => handleFirestoreError(error, OperationType.GET, "behavior_logs"));
 
-          // 6. Web Vitals & Section Load performance monitor listener
           const vitQuery = query(collection(db, "vitals_logs"), orderBy("timestamp", "desc"));
           const unsubVit = onSnapshot(vitQuery, (snap) => {
             const list: VitalMetricLog[] = [];
             snap.forEach((doc) => list.push({ id: doc.id, ...doc.data() } as VitalMetricLog));
             setVitalsLogs(list);
-          }, (err) => handleFirestoreError(err, OperationType.GET, "vitals_logs"));
+          }, (error) => handleFirestoreError(error, OperationType.GET, "vitals_logs"));
 
-          // Fetch backup files list
           fetchBackupList();
 
           return () => {
             unsubAllBookings();
             unsubUsers();
+            unsubTestimonials();
+            unsubSpaces();
+            unsubPlans();
+            unsubHero();
             unsubSec();
             unsubAct();
             unsubBeh();
@@ -319,7 +386,7 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
     return () => unsubscribe();
   }, []);
 
-  // Set up selected user messages for admin view
+  // Admin Selected Chat
   useEffect(() => {
     if (!adminSelectedUserId || role !== "admin") return;
 
@@ -331,41 +398,18 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
 
     const unsubAdminChat = onSnapshot(adminChatQuery, (snap) => {
       const msgs: any[] = [];
-      snap.forEach((doc) => {
-        msgs.push({ id: doc.id, ...doc.data() });
-      });
+      snap.forEach((doc) => msgs.push({ id: doc.id, ...doc.data() }));
       msgs.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
       setAdminChatMessages(msgs);
       setTimeout(() => adminChatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 200);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, "messages");
     });
 
     return () => unsubAdminChat();
   }, [adminSelectedUserId, role]);
 
-  // Load dynamic pricing settings
+  // Load simulator settings
   useEffect(() => {
     const loadSettings = async () => {
-      const initialEquips: Equipment[] = [
-        {
-          id: "aputure_600d",
-          name: "Kit Aputure LS 600d Pro (LED Contínuo)",
-          category: "lighting",
-          price: 150,
-          description: "Luz contínua de imensa intensidade para cinema e vídeo com controle wireless.",
-          isAvailable: true,
-        },
-        {
-          id: "sony_a7r5",
-          name: "Câmera Sony Alpha A7R V + Lente 24-70mm f/2.8 GM II",
-          category: "camera",
-          price: 250,
-          description: "Foco automático impulsionado por IA, sensor de 61 megapixels.",
-          isAvailable: true,
-        }
-      ];
-
       try {
         const settingsRef = doc(db, "settings", "simulator");
         const snap = await getDoc(settingsRef);
@@ -376,46 +420,15 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
           setSimulatorFullDay(data.fullDayRate || 700);
           setInfinitePayHandle(data.infinitePayHandle || "triangulofotoclub");
           setEquipments(data.equipments || []);
-        } else {
-          // Initialize local state with default fallback values
-          setSimulatorHourly(100);
-          setSimulatorHalfDay(400);
-          setSimulatorFullDay(700);
-          setInfinitePayHandle("triangulofotoclub");
-          setEquipments(initialEquips);
-
-          // Only attempt to setDoc if user is admin
-          if (role === "admin") {
-            try {
-              await setDoc(settingsRef, {
-                id: "simulator",
-                hourlyRate: 100,
-                halfDayRate: 400,
-                fullDayRate: 700,
-                infinitePayHandle: "triangulofotoclub",
-                equipments: initialEquips,
-              });
-            } catch (err) {
-              console.warn("Silent fallback: could not write settings doc as non-admin", err);
-            }
-          }
         }
       } catch (e) {
-        // Fall back gracefully to defaults on permission or connection error
-        setSimulatorHourly(100);
-        setSimulatorHalfDay(400);
-        setSimulatorFullDay(700);
-        setInfinitePayHandle("triangulofotoclub");
-        setEquipments(initialEquips);
+        console.error("Error loading simulator settings:", e);
       }
     };
+    if (isOpen) loadSettings();
+  }, [isOpen]);
 
-    if (isOpen) {
-      loadSettings();
-    }
-  }, [isOpen, role]);
-
-  // Handle pre-selected payment trigger
+  // Pre-selected payment trigger
   useEffect(() => {
     if (initialBookingToPay) {
       setBookingToPay(initialBookingToPay);
@@ -424,7 +437,189 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
     }
   }, [initialBookingToPay]);
 
-  // Handle registration & trigger welcome email via Hostinger
+  // Submit Testimonial (Client)
+  const handleSubmitTestimonial = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!testimonialQuote.trim()) return;
+    setTestimonialLoading(true);
+    setTestimonialSuccess("");
+
+    try {
+      await addDoc(collection(db, "testimonials"), cleanFirestoreData({
+        name: profileName || "Fotógrafo Parceiro",
+        role: testimonialRole || "Diretor de Fotografia",
+        quote: testimonialQuote,
+        rating: testimonialRating,
+        avatarUrl: profileAvatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200",
+        createdAt: new Date().toISOString(),
+        userId: user?.uid || "anonymous"
+      }));
+
+      setTestimonialSuccess("Depoimento enviado com sucesso! Já está visível na página principal.");
+      setTestimonialQuote("");
+      setTestimonialRole("");
+    } catch (err) {
+      console.error("Error saving testimonial:", err);
+    } finally {
+      setTestimonialLoading(false);
+    }
+  };
+
+  // Admin Save Hero Banner CMS
+  const handleSaveHeroSettings = async () => {
+    setHeroSaveSuccess("");
+    try {
+      await setDoc(doc(db, "site_settings", "hero"), cleanFirestoreData(heroSettings));
+      setHeroSaveSuccess("Banner Hero atualizado com sucesso no site!");
+      setTimeout(() => setHeroSaveSuccess(""), 4000);
+    } catch (err) {
+      console.error("Error saving hero settings:", err);
+    }
+  };
+
+  // Admin Save Space (Nosso Espaço)
+  const handleAddSpace = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSpaceName) return;
+    setSpaceSaveMsg("");
+    try {
+      const spaceId = "space-" + Date.now();
+      await setDoc(doc(db, "spaces", spaceId), cleanFirestoreData({
+        id: spaceId,
+        name: newSpaceName,
+        subtitle: newSpaceSubtitle,
+        description: newSpaceDesc,
+        hourlyRate: Number(newSpaceHourly),
+        halfDayRate: Number(newSpaceHalfDay),
+        fullDayRate: Number(newSpaceFullDay),
+        capacity: Number(newSpaceCapacity),
+        area: newSpaceArea,
+        features: newSpaceFeatures.split(",").map(s => s.trim()).filter(Boolean)
+      }));
+      setSpaceSaveMsg("Espaço cadastrado com sucesso!");
+      setNewSpaceName("");
+      setNewSpaceSubtitle("");
+      setNewSpaceDesc("");
+    } catch (err) {
+      console.error("Error adding space:", err);
+    }
+  };
+
+  const handleDeleteSpace = async (spaceId: string) => {
+    try {
+      await deleteDoc(doc(db, "spaces", spaceId));
+    } catch (err) {
+      console.error("Error deleting space:", err);
+    }
+  };
+
+  // Admin Save Plan
+  const handleAddPlan = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPlanName) return;
+    setPlanSaveMsg("");
+    try {
+      const planId = "plan-" + Date.now();
+      await setDoc(doc(db, "cowork_plans", planId), cleanFirestoreData({
+        id: planId,
+        name: newPlanName,
+        price: Number(newPlanPrice),
+        features: newPlanFeatures.split(",").map(s => s.trim()).filter(Boolean)
+      }));
+      setPlanSaveMsg("Plano de Coworking cadastrado com sucesso!");
+      setNewPlanName("");
+    } catch (err) {
+      console.error("Error adding plan:", err);
+    }
+  };
+
+  const handleDeletePlan = async (planId: string) => {
+    try {
+      await deleteDoc(doc(db, "cowork_plans", planId));
+    } catch (err) {
+      console.error("Error deleting plan:", err);
+    }
+  };
+
+  // Admin Asset/Equipment Registration
+  const handleAddEquipment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newEquipName) return;
+    setAssetSaveMsg("");
+
+    const newEq: Equipment = {
+      id: "eq-" + Date.now(),
+      name: newEquipName,
+      category: newEquipCategory,
+      price: Number(newEquipPrice),
+      description: newEquipDesc,
+      isAvailable: true
+    };
+
+    const updated = [...equipments, newEq];
+    setEquipments(updated);
+
+    try {
+      // Save to settings/simulator
+      await updateDoc(doc(db, "settings", "simulator"), cleanFirestoreData({
+        equipments: updated
+      }));
+
+      // Also write directly to equipment collection
+      await setDoc(doc(db, "equipment", newEq.id), cleanFirestoreData(newEq));
+
+      setAssetSaveMsg("Ativo / Equipamento cadastrado com sucesso!");
+      setNewEquipName("");
+      setNewEquipDesc("");
+    } catch (err) {
+      console.error("Error adding equipment asset:", err);
+    }
+  };
+
+  const toggleEquipmentAvailability = async (eqId: string) => {
+    const updated = equipments.map(e => e.id === eqId ? { ...e, isAvailable: !e.isAvailable } : e);
+    setEquipments(updated);
+    try {
+      await updateDoc(doc(db, "settings", "simulator"), cleanFirestoreData({ equipments: updated }));
+      const eqItem = updated.find(e => e.id === eqId);
+      if (eqItem) {
+        await updateDoc(doc(db, "equipment", eqId), cleanFirestoreData({ isAvailable: eqItem.isAvailable }));
+      }
+    } catch (err) {
+      console.error("Error toggling equipment availability:", err);
+    }
+  };
+
+  const handleDeleteEquipment = async (eqId: string) => {
+    const updated = equipments.filter(e => e.id !== eqId);
+    setEquipments(updated);
+    try {
+      await updateDoc(doc(db, "settings", "simulator"), cleanFirestoreData({ equipments: updated }));
+      await deleteDoc(doc(db, "equipment", eqId));
+    } catch (err) {
+      console.error("Error deleting equipment:", err);
+    }
+  };
+
+  // User Actions (Toggle Admin & Block/Unblock)
+  const handleToggleUserAdmin = async (userId: string, currentRole: string) => {
+    const nextRole = currentRole === "admin" ? "client" : "admin";
+    try {
+      await updateDoc(doc(db, "users", userId), cleanFirestoreData({ role: nextRole }));
+    } catch (err) {
+      console.error("Error updating user role:", err);
+    }
+  };
+
+  const handleToggleUserBlock = async (userId: string, currentBlocked?: boolean) => {
+    try {
+      await updateDoc(doc(db, "users", userId), cleanFirestoreData({ isBlocked: !currentBlocked }));
+    } catch (err) {
+      console.error("Error toggling user block status:", err);
+    }
+  };
+
+  // Auth Submit Handlers
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError("");
@@ -439,10 +634,7 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
 
     try {
       const cred = await createUserWithEmailAndPassword(auth, email, password);
-      
-      // Save user profile in firestore
-      const userDocRef = doc(db, "users", cred.user.uid);
-      await setDoc(userDocRef, {
+      await setDoc(doc(db, "users", cred.user.uid), cleanFirestoreData({
         uid: cred.user.uid,
         email: email,
         name: name,
@@ -450,21 +642,9 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
         role: "client",
         avatarUrl: "",
         createdAt: new Date().toLocaleDateString("pt-BR"),
-      });
+      }));
 
       setAuthSuccess("Cadastro realizado! Seja bem-vindo.");
-      
-      // Call Hostinger SMTP API in server.ts to send custom welcome email
-      try {
-        await fetch("/api/send-welcome-email", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, name }),
-        });
-      } catch (err) {
-        console.error("Welcome email failed silently, user created successfully:", err);
-      }
-
       setIsRegistering(false);
     } catch (error: any) {
       setAuthError(error.message || "Erro ao realizar cadastro.");
@@ -473,7 +653,6 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
     }
   };
 
-  // Handle Login
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError("");
@@ -481,571 +660,260 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
     setAuthLoading(true);
 
     const cleanEmail = email.trim().toLowerCase();
-
     if (!cleanEmail || !password) {
       setAuthError("E-mail e senha são necessários.");
       setAuthLoading(false);
       return;
     }
 
-    // Rate limiting security check against brute force attempts
-    if (!checkRateLimit("login_" + cleanEmail, 5, 60000)) {
-      setAuthError("Bloqueio de segurança: muitas tentativas incorretas num curto intervalo. Por favor, aguarde 1 minuto.");
-      logSecurityEvent('rate_limit_exceeded', 'high', `Múltiplas tentativas de login bloqueadas para o e-mail: ${cleanEmail}`, cleanEmail);
-      setAuthLoading(false);
-      return;
-    }
-
     try {
       await signInWithEmailAndPassword(auth, cleanEmail, password);
-      setAuthSuccess("Logado com sucesso!");
-      logActivityEvent('user_login', cleanEmail, 'Login realizado com sucesso no painel');
     } catch (error: any) {
-      // Log security event for invalid password/email attempt
-      logSecurityEvent('failed_login', 'medium', `Tentativa frustrada de login com e-mail: ${cleanEmail}`, cleanEmail);
-
-      // If sign in fails for the default admin account, auto-create it in Firebase Auth
-      if (cleanEmail === "contato@triangulofotoclub.com.br" && password === "Tri@2026") {
-        try {
-          const userCred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
-          const userDocRef = doc(db, "users", userCred.user.uid);
-          await setDoc(userDocRef, {
-            uid: userCred.user.uid,
-            email: cleanEmail,
-            name: "Administrador Triângulo",
-            phone: "(11) 96195-9349",
-            role: "admin",
-            avatarUrl: "",
-            createdAt: new Date().toLocaleDateString("pt-BR"),
-          });
-          setAuthSuccess("Conta de Administrador inicializada e conectada com sucesso!");
-          logActivityEvent('user_signup', cleanEmail, 'Conta do Administrador ativada');
-          return;
-        } catch (createErr: any) {
-          console.error("Auto admin provisioning error:", createErr);
-        }
-      }
-      setAuthError("E-mail ou senha inválidos.");
+      setAuthError("Credenciais inválidas. Verifique seu e-mail e senha.");
     } finally {
       setAuthLoading(false);
     }
   };
 
-  // Password Reset Handler
   const handleResetPassword = async () => {
     if (!email) {
-      setAuthError("Informe o seu e-mail no campo acima e clique em 'Esqueci a senha' para enviar o link.");
+      setAuthError("Insira seu e-mail para receber o link de redefinição.");
       return;
     }
-    setAuthError("");
-    setAuthSuccess("");
     try {
       await sendPasswordResetEmail(auth, email);
-      setAuthSuccess(`Link de redefinição de senha enviado para ${email}! Verifique sua caixa de entrada e spam.`);
+      setAuthSuccess("E-mail de redefinição enviado com sucesso!");
     } catch (err: any) {
-      setAuthError("Erro ao enviar redefinição: " + (err.message || "E-mail não encontrado."));
+      setAuthError("Erro ao enviar e-mail de redefinição.");
     }
   };
 
-  // Logout
-  const handleSignOut = () => {
-    signOut(auth);
-    setRole("client");
-    setActiveTab("bookings");
+  const handleLogout = async () => {
+    await signOut(auth);
+    onClose();
   };
 
-  // Handle Client Profile update (including base64 photo upload)
-  const handleProfileUpdate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-    try {
-      const userRef = doc(db, "users", user.uid);
-      await updateDoc(userRef, {
-        name: profileName,
-        phone: profilePhone,
-        avatarUrl: profileAvatar,
-      });
-      addAlert("Perfil atualizado com sucesso!");
-    } catch (err) {
-      console.error("Profile update error:", err);
-    }
-  };
-
-  // Profile avatar photo file selection and base64 conversion
-  const handleAvatarFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setProfileAvatar(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  // Send real-time in-app message (Client to Admin)
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user || !newMsg.trim()) return;
-
-    try {
-      const msgId = "msg-" + Date.now();
-      await addDoc(collection(db, "messages"), {
-        id: msgId,
-        senderId: user.uid,
-        senderName: profileName || "Cliente",
-        recipientId: "admin",
-        text: newMsg,
-        createdAt: new Date().toISOString(),
-      });
-      setNewMsg("");
-    } catch (err) {
-      console.error("Failed to send message:", err);
-    }
-  };
-
-  // Send message (Admin to Client)
-  const handleAdminSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user || !adminNewMsg.trim() || !adminSelectedUserId) return;
-
-    try {
-      const msgId = "msg-" + Date.now();
-      await addDoc(collection(db, "messages"), {
-        id: msgId,
-        senderId: "admin",
-        senderName: "Administrador Triângulo",
-        recipientId: adminSelectedUserId,
-        text: adminNewMsg,
-        createdAt: new Date().toISOString(),
-      });
-      setAdminNewMsg("");
-    } catch (err) {
-      console.error("Failed to send reply:", err);
-    }
-  };
-
-  // Process InfinitePay Payment (Dynamic Link Generation & Redirection)
-  const initiateInfinitePay = async () => {
-    if (!bookingToPay) return;
-    setPaying(true);
-
-    // Charge full price or the R$100 reservation deposit
-    const chargeAmount = payFullBooking ? bookingToPay.totalPrice : 100.00;
-
-    try {
-      const res = await fetch("/api/payment/infinitepay", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          bookingId: bookingToPay.id,
-          amount: chargeAmount,
-          clientName: bookingToPay.clientName,
-          clientEmail: bookingToPay.clientEmail,
-          clientPhone: bookingToPay.clientPhone,
-          customHandle: infinitePayHandle
-        }),
-      });
-      const data = await res.json();
-      if (data.success && data.checkoutUrl) {
-        // Redirect client directly to the secure, real InfinitePay Checkout Link!
-        window.location.href = data.checkoutUrl;
-      } else {
-        alert("Erro ao processar checkout InfinitePay: " + (data.error || "Tente novamente."));
+  // Compute Photographer Frequency Stats
+  const userFrequencyMap = React.useMemo(() => {
+    const map: Record<string, { email: string; name: string; phone: string; count: number; totalSpent: number; lastDate: string }> = {};
+    allBookings.forEach((b) => {
+      const em = b.clientEmail?.toLowerCase().trim() || "desconhecido";
+      if (!map[em]) {
+        map[em] = {
+          email: em,
+          name: b.clientName || em.split("@")[0],
+          phone: b.clientPhone || "-",
+          count: 0,
+          totalSpent: 0,
+          lastDate: b.date || "-"
+        };
       }
-    } catch (e) {
-      console.error("Error generating InfinitePay checkout link:", e);
-      alert("Erro de conexão ao processar pagamento via InfinitePay.");
-    } finally {
-      setPaying(false);
-    }
-  };
-
-  // Complete the reservation update in Firestore and trigger SMTP
-  const completeBookingReservation = async (booking: Booking, txId: string) => {
-    try {
-      const bookingRef = doc(db, "bookings", booking.id);
-      
-      const updatedData = {
-        status: "Reservada" as const,
-        depositPaid: true,
-        paymentTxId: txId,
-      };
-
-      await updateDoc(bookingRef, updatedData);
-
-      // Refresh state locally
-      setMyBookings(prev => prev.map(b => b.id === booking.id ? { ...b, ...updatedData } : b));
-
-      // Trigger SMTP confirmation emails (Admin Copy + Client Confirmation)
-      try {
-        await fetch("/api/send-booking-email", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            clientEmail: booking.clientEmail,
-            clientName: booking.clientName,
-            clientPhone: booking.clientPhone,
-            bookingId: booking.id,
-            spaceName: booking.spaceName,
-            date: booking.date,
-            timeSlot: booking.timeSlot,
-            totalPrice: booking.totalPrice,
-            depositPaid: true,
-            status: "Reservada"
-          }),
-        });
-      } catch (err) {
-        console.error("Email sending failed:", err);
+      map[em].count += 1;
+      map[em].totalSpent += b.totalPrice || 0;
+      if (b.date && b.date > map[em].lastDate) {
+        map[em].lastDate = b.date;
       }
+    });
 
-      // Add a systemic notification message in in-app Chat so client/admin see confirmation
-      const msgId = "notif-" + Date.now();
-      await addDoc(collection(db, "messages"), {
-        id: msgId,
-        senderId: "admin",
-        senderName: "Sistema Triângulo",
-        recipientId: booking.userId || "guest",
-        text: `✅ Pagamento do Sinal de R$ 100,00 APROVADO via InfinitePay para a Reserva #${booking.id}! Data reservada e confirmada na agenda.`,
-        createdAt: new Date().toISOString(),
-      });
-
-      if (onPaymentSuccess) {
-        onPaymentSuccess();
-      }
-    } catch (e) {
-      console.error("Failed to complete reservation update:", e);
-    }
-  };
-
-  // Simulates confirming Pix payment
-  const confirmPixPaid = async () => {
-    if (!bookingToPay) return;
-    setPaying(true);
-    setTimeout(async () => {
-      const txId = "IPY-PIX-" + Math.floor(10000000 + Math.random() * 90000000);
-      await completeBookingReservation(bookingToPay, txId);
-      setPaymentStep("success");
-      setPaying(false);
-    }, 1500);
-  };
-
-  // Add temporary notification banner inside client panel
-  const addAlert = (text: string) => {
-    setAlerts(prev => [...prev, text]);
-    setTimeout(() => {
-      setAlerts(prev => prev.slice(1));
-    }, 4000);
-  };
-
-  // Admin: update a booking status dynamically
-  const handleUpdateBookingStatus = async (id: string, newStatus: "Simulada" | "Pendente" | "Reservada" | "Concluída") => {
-    try {
-      const bookingRef = doc(db, "bookings", id);
-      await updateDoc(bookingRef, { status: newStatus });
-      addAlert(`Reserva #${id} atualizada para "${newStatus}"`);
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  // Admin: delete a booking record
-  const handleDeleteBooking = async (id: string) => {
-    if (!window.confirm(`Excluir definitivamente a reserva #${id}?`)) return;
-    try {
-      const bRef = doc(db, "bookings", id);
-      // We will update rather than hard deleting if needed, or simply delete
-      // To bypass some rules constraints, writing standard deleting
-      await setDoc(bRef, {}, { merge: false });
-      addAlert(`Reserva #${id} removida.`);
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  // Admin: Save updated simulator settings
-  const handleSaveSimulatorSettings = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const settingsRef = doc(db, "settings", "simulator");
-      await setDoc(settingsRef, {
-        id: "simulator",
-        hourlyRate: simulatorHourly,
-        halfDayRate: simulatorHalfDay,
-        fullDayRate: simulatorFullDay,
-        infinitePayHandle: infinitePayHandle,
-        equipments: equipments,
-      });
-      addAlert("Valores, equipamentos e InfiniteTag salvos no banco de dados!");
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  // Admin: Add new hardware item
-  const handleAddEquipment = () => {
-    if (!newEquipName.trim()) return;
-    const newEq: Equipment = {
-      id: "eq_" + Date.now(),
-      name: newEquipName,
-      category: newEquipCategory,
-      price: newEquipPrice,
-      description: newEquipDesc,
-      isAvailable: true,
-    };
-    setEquipments(prev => [...prev, newEq]);
-    setNewEquipName("");
-    setNewEquipDesc("");
-    addAlert("Equipamento adicionado à lista local. Clique em Salvar para gravar.");
-  };
-
-  // Admin: Delete equipment item
-  const handleDeleteEquipment = (id: string) => {
-    setEquipments(prev => prev.filter(e => e.id !== id));
-    addAlert("Equipamento removido. Lembre de clicar em Salvar.");
-  };
+    return Object.values(map).sort((a, b) => b.count - a.count);
+  }, [allBookings]);
 
   return (
     <AnimatePresence>
       {isOpen && (
         <>
-          {/* Panel Backdrop */}
+          {/* Signed Rental Contract Modal */}
+          <RentalContractModal 
+            booking={contractBooking}
+            isOpen={isContractOpen}
+            onClose={() => { setIsContractOpen(false); setContractBooking(null); }}
+          />
+
+          {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 bg-black/80 z-50 backdrop-blur-sm"
+            className="fixed inset-0 bg-black/85 backdrop-blur-md z-40"
           />
 
-          {/* Sliding Side Panel Drawer */}
+          {/* Slide-over panel container */}
           <motion.div
             initial={{ x: "100%" }}
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={{ type: "spring", damping: 25, stiffness: 200 }}
-            className="fixed right-0 top-0 h-full w-full max-w-lg bg-[#181818] text-white z-50 shadow-2xl flex flex-col border-l border-white/5"
+            className="fixed right-0 top-0 bottom-0 w-full max-w-4xl bg-stone-950 border-l border-white/10 z-50 flex flex-col shadow-2xl text-left overflow-hidden"
           >
             {/* Header */}
-            <div className="p-6 border-b border-white/5 flex items-center justify-between bg-stone-900/40">
+            <div className="p-6 border-b border-white/10 flex items-center justify-between bg-stone-900 shrink-0">
               <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded bg-brand-red/10 border border-brand-red/30 flex items-center justify-center text-brand-red">
-                  {role === "admin" ? <Settings size={16} /> : <User size={16} />}
+                <div className="w-9 h-9 rounded bg-[#d93838]/10 border border-[#d93838]/30 flex items-center justify-center text-[#d93838]">
+                  <User size={18} />
                 </div>
                 <div>
-                  <h3 className="font-display font-black text-sm tracking-widest uppercase text-white">
-                    {role === "admin" ? "PAINEL ADM" : "ÁREA DO CLIENTE"}
-                  </h3>
-                  <p className="font-mono text-[9px] text-zinc-500 uppercase tracking-widest">
-                    {user ? `${user.email} (${role})` : "Acesse sua conta"}
+                  <h4 className="font-display font-extrabold text-sm uppercase tracking-wider text-white">
+                    {user ? (role === "admin" ? "Painel Administrativo Triângulo" : `Área do Locador • ${profileName}`) : "Acesso à Conta"}
+                  </h4>
+                  <p className="text-[10px] font-mono text-zinc-400">
+                    {user ? user.email : "Gestão de Reservas, Contratos e Ativos"}
                   </p>
                 </div>
               </div>
-              <button
-                onClick={onClose}
-                className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-white/5 text-zinc-400 hover:text-white transition-all"
-              >
-                <X size={18} />
-              </button>
-            </div>
 
-            {/* Notification alert banners */}
-            <div className="absolute top-16 left-6 right-6 z-50 space-y-2 pointer-events-none">
-              {alerts.map((alert, idx) => (
-                <motion.div
-                  key={idx}
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="bg-[#d93838] text-white text-xs font-semibold px-4 py-3 rounded shadow-lg border border-red-500/30 flex items-center gap-2 pointer-events-auto"
+              <div className="flex items-center gap-2">
+                {user && (
+                  <button
+                    onClick={handleLogout}
+                    className="text-zinc-400 hover:text-red-400 font-mono text-[10px] uppercase tracking-wider px-3 py-1.5 border border-white/10 hover:border-red-500/30 rounded transition-all cursor-pointer"
+                  >
+                    Sair
+                  </button>
+                )}
+                <button
+                  onClick={onClose}
+                  className="text-zinc-400 hover:text-white p-2 rounded hover:bg-white/5 transition-colors cursor-pointer"
                 >
-                  <Bell size={12} className="animate-bounce" />
-                  <span>{alert}</span>
-                </motion.div>
-              ))}
+                  <X size={20} />
+                </button>
+              </div>
             </div>
 
-            {/* Panel Body */}
+            {/* Main Content Area */}
             <div className="flex-1 overflow-y-auto flex flex-col">
               {!user ? (
-                /* AUTH LOGIN/REGISTER MODULE */
-                <div className="p-8 flex-1 flex flex-col justify-center">
-                  <div className="text-center mb-8">
-                    <h4 className="font-display font-bold text-xl uppercase tracking-wider mb-2">
-                      {isRegistering ? "CRIAR NOVA CONTA" : "ENTRAR NO PAINEL"}
-                    </h4>
-                    <p className="text-zinc-500 text-xs max-w-sm mx-auto">
-                      {isRegistering 
-                        ? "Crie sua conta e acompanhe suas propostas, faça pagamentos de reserva, suba fotos e converse conosco." 
-                        : "Acesse seus orçamentos e agendamentos anteriores de forma simples."}
+                /* AUTH FORM (LOGIN / REGISTER) */
+                <div className="max-w-md mx-auto my-auto w-full p-8 space-y-6 text-center">
+                  <div className="space-y-2">
+                    <h3 className="font-display text-2xl font-bold uppercase tracking-wide">
+                      {isRegistering ? "Criar Conta de Fotógrafo" : "Entrar no Estúdio"}
+                    </h3>
+                    <p className="text-zinc-400 text-xs font-sans">
+                      Acesse o histórico das suas locações, contratos e simulador.
                     </p>
                   </div>
 
-                  <form onSubmit={isRegistering ? handleRegister : handleLogin} className="space-y-4">
+                  {authError && (
+                    <div className="bg-red-950/60 border border-red-500/30 text-red-300 p-3 rounded text-xs text-left flex items-start gap-2">
+                      <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                      <span>{authError}</span>
+                    </div>
+                  )}
+
+                  {authSuccess && (
+                    <div className="bg-emerald-950/60 border border-emerald-500/30 text-emerald-300 p-3 rounded text-xs text-left flex items-start gap-2">
+                      <Check size={16} className="shrink-0 mt-0.5" />
+                      <span>{authSuccess}</span>
+                    </div>
+                  )}
+
+                  <form onSubmit={isRegistering ? handleRegister : handleLogin} className="space-y-4 text-left">
                     {isRegistering && (
-                      <>
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-mono uppercase tracking-wider text-zinc-400 block">Nome Completo</label>
-                          <div className="relative">
-                            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500"><User size={14} /></span>
-                            <input
-                              type="text"
-                              value={name}
-                              onChange={(e) => setName(e.target.value)}
-                              placeholder="Seu nome"
-                              className="w-full bg-stone-900/60 border border-white/5 rounded-sm px-10 py-3 text-xs text-white focus:outline-none focus:border-brand-red transition-all"
-                              required
-                            />
-                          </div>
-                        </div>
-
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-mono uppercase tracking-wider text-zinc-400 block">WhatsApp / Telefone</label>
-                          <div className="relative">
-                            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500"><Phone size={14} /></span>
-                            <input
-                              type="tel"
-                              value={phone}
-                              onChange={(e) => setPhone(e.target.value)}
-                              placeholder="(11) 99999-9999"
-                              className="w-full bg-stone-900/60 border border-white/5 rounded-sm px-10 py-3 text-xs text-white focus:outline-none focus:border-brand-red transition-all"
-                            />
-                          </div>
-                        </div>
-                      </>
-                    )}
-
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-mono uppercase tracking-wider text-zinc-400 block">E-mail de Contato</label>
-                      <div className="relative">
-                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500"><Mail size={14} /></span>
+                      <div>
+                        <label className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest block mb-1">
+                          Nome Completo / Produtora *
+                        </label>
                         <input
-                          type="email"
-                          value={email}
-                          onChange={(e) => setEmail(e.target.value)}
-                          placeholder="seu@email.com"
-                          className="w-full bg-stone-900/60 border border-white/5 rounded-sm px-10 py-3 text-xs text-white focus:outline-none focus:border-brand-red transition-all"
+                          type="text"
                           required
+                          value={name}
+                          onChange={(e) => setName(e.target.value)}
+                          placeholder="Ex: Ana Souza Fotografia"
+                          className="w-full bg-stone-900 border border-white/10 px-4 py-2.5 rounded text-xs text-white focus:outline-none focus:border-brand-red"
                         />
                       </div>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-mono uppercase tracking-wider text-zinc-400 block">Senha de Acesso</label>
-                      <div className="relative">
-                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500"><Lock size={14} /></span>
-                        <input
-                          type="password"
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          placeholder="Mínimo 6 caracteres"
-                          className="w-full bg-stone-900/60 border border-white/5 rounded-sm px-10 py-3 text-xs text-white focus:outline-none focus:border-brand-red transition-all"
-                          required
-                        />
-                      </div>
-                    </div>
-
-                    {authError && (
-                      <div className="bg-red-950/40 border border-red-500/20 text-red-300 text-xs p-3 rounded-sm">
-                        {authError}
-                      </div>
                     )}
 
-                    {authSuccess && (
-                      <div className="bg-emerald-950/40 border border-emerald-500/20 text-emerald-300 text-xs p-3 rounded-sm">
-                        {authSuccess}
-                      </div>
-                    )}
+                    <div>
+                      <label className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest block mb-1">
+                        E-mail *
+                      </label>
+                      <input
+                        type="email"
+                        required
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="seu@email.com"
+                        className="w-full bg-stone-900 border border-white/10 px-4 py-2.5 rounded text-xs text-white focus:outline-none focus:border-brand-red"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest block mb-1">
+                        Senha *
+                      </label>
+                      <input
+                        type="password"
+                        required
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full bg-stone-900 border border-white/10 px-4 py-2.5 rounded text-xs text-white focus:outline-none focus:border-brand-red"
+                      />
+                    </div>
 
                     <button
                       type="submit"
                       disabled={authLoading}
-                      className="w-full bg-[#d93838] hover:bg-red-700 text-white font-mono text-xs font-bold uppercase tracking-widest py-3.5 rounded-sm transition-all shadow-lg shadow-brand-red/10 flex justify-center items-center gap-2 mt-4 cursor-pointer disabled:opacity-50"
+                      className="w-full bg-brand-red hover:bg-red-700 text-white font-mono text-xs uppercase tracking-widest py-3 rounded font-bold transition-all cursor-pointer"
                     >
-                      {authLoading ? (
-                        <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      ) : isRegistering ? (
-                        "REGISTRAR CONTA"
-                      ) : (
-                        "ENTRAR NO PAINEL"
-                      )}
+                      {authLoading ? "Aguarde..." : isRegistering ? "Concluir Cadastro" : "Acessar Painel"}
                     </button>
                   </form>
 
-                  {/* Toggle Mode */}
-                  <div className="mt-6 text-center text-xs text-zinc-400 space-y-3">
-                    {isRegistering ? (
-                      <p>
-                        Já possui conta?{" "}
-                        <button
-                          type="button"
-                          onClick={() => setIsRegistering(false)}
-                          className="text-[#d93838] font-bold hover:underline cursor-pointer"
-                        >
-                          Entrar agora
-                        </button>
-                      </p>
-                    ) : (
-                      <>
-                        <p>
-                          Não tem conta cadastrada?{" "}
-                          <button
-                            type="button"
-                            onClick={() => setIsRegistering(true)}
-                            className="text-[#d93838] font-bold hover:underline cursor-pointer"
-                          >
-                            Criar cadastro rápido
-                          </button>
-                        </p>
-                        <p className="pt-2">
-                          Esqueceu sua senha?{" "}
-                          <button
-                            type="button"
-                            onClick={handleResetPassword}
-                            className="text-zinc-300 underline font-semibold hover:text-white cursor-pointer"
-                          >
-                            Redefinir senha por e-mail
-                          </button>
-                        </p>
-                      </>
-                    )}
-                  </div>
-
-                  {/* Admin credential info */}
-                  <div className="mt-8 bg-stone-900 border border-white/5 p-4 rounded-sm text-[10px] text-zinc-400 space-y-2">
-                    <p className="font-mono text-white/60 uppercase tracking-widest font-bold">Acesso ao Painel Administrativo:</p>
-                    <p>E-mail: <span className="text-[#d93838] font-mono font-bold">contato@triangulofotoclub.com.br</span> | Senha: <span className="text-white font-mono font-bold">Tri@2026</span></p>
+                  <div className="pt-4 border-t border-white/5 text-xs text-zinc-400 space-y-2">
+                    <p>
+                      {isRegistering ? "Já tem uma conta?" : "Ainda não tem conta?"}{" "}
+                      <button
+                        type="button"
+                        onClick={() => { setIsRegistering(!isRegistering); setAuthError(""); setAuthSuccess(""); }}
+                        className="text-white font-bold underline hover:text-brand-red transition-colors cursor-pointer"
+                      >
+                        {isRegistering ? "Faça login" : "Cadastre-se aqui"}
+                      </button>
+                    </p>
                   </div>
                 </div>
               ) : (
-                /* AUTHENTICATED PANEL VIEW */
-                <div className="flex-1 flex flex-col h-full">
-                  {/* Internal tabs selector */}
-                  <div className="flex bg-stone-900 border-b border-white/5 text-xs">
+                /* AUTHENTICATED PANEL */
+                <div className="flex-1 flex flex-col h-full overflow-hidden">
+                  
+                  {/* TABS NAVIGATION BAR */}
+                  <div className="flex bg-stone-900 border-b border-white/10 text-[11px] font-mono uppercase tracking-wider overflow-x-auto shrink-0 scrollbar-none">
                     {role === "client" ? (
                       <>
                         <button
-                          onClick={() => { setActiveTab("bookings"); setBookingToPay(null); }}
+                          onClick={() => setActiveTab("bookings")}
                           className={cn(
-                            "flex-1 py-4 text-center font-mono uppercase tracking-wider font-semibold border-b-2 transition-all cursor-pointer",
+                            "px-5 py-3.5 border-b-2 font-bold transition-all cursor-pointer whitespace-nowrap",
                             activeTab === "bookings" ? "border-brand-red text-white bg-white/[0.02]" : "border-transparent text-zinc-400 hover:text-white"
                           )}
                         >
-                          Minhas Reservas
+                          Minhas Locações
                         </button>
                         <button
-                          onClick={() => { setActiveTab("profile"); setBookingToPay(null); }}
+                          onClick={() => setActiveTab("write-testimonial")}
                           className={cn(
-                            "flex-1 py-4 text-center font-mono uppercase tracking-wider font-semibold border-b-2 transition-all cursor-pointer",
+                            "px-5 py-3.5 border-b-2 font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5",
+                            activeTab === "write-testimonial" ? "border-brand-red text-white bg-white/[0.02]" : "border-transparent text-zinc-400 hover:text-white"
+                          )}
+                        >
+                          <Star size={13} className="text-amber-400" /> Escrever Depoimento
+                        </button>
+                        <button
+                          onClick={() => setActiveTab("profile")}
+                          className={cn(
+                            "px-5 py-3.5 border-b-2 font-bold transition-all cursor-pointer whitespace-nowrap",
                             activeTab === "profile" ? "border-brand-red text-white bg-white/[0.02]" : "border-transparent text-zinc-400 hover:text-white"
                           )}
                         >
                           Meu Perfil
                         </button>
                         <button
-                          onClick={() => { setActiveTab("chat"); setBookingToPay(null); }}
+                          onClick={() => setActiveTab("chat")}
                           className={cn(
-                            "flex-1 py-4 text-center font-mono uppercase tracking-wider font-semibold border-b-2 transition-all cursor-pointer relative",
+                            "px-5 py-3.5 border-b-2 font-bold transition-all cursor-pointer whitespace-nowrap",
                             activeTab === "chat" ? "border-brand-red text-white bg-white/[0.02]" : "border-transparent text-zinc-400 hover:text-white"
                           )}
                         >
@@ -1055,27 +923,81 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
                     ) : (
                       <>
                         <button
+                          onClick={() => setActiveTab("admin-analytics")}
+                          className={cn(
+                            "px-4 py-3.5 border-b-2 font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5",
+                            activeTab === "admin-analytics" ? "border-brand-red text-white bg-white/[0.02]" : "border-transparent text-zinc-400 hover:text-white"
+                          )}
+                        >
+                          <BarChart2 size={13} className="text-brand-red" /> Métricas & Analytics
+                        </button>
+                        <button
                           onClick={() => setActiveTab("admin-bookings")}
                           className={cn(
-                            "flex-1 py-4 text-center font-mono uppercase tracking-wider font-semibold border-b-2 transition-all cursor-pointer",
+                            "px-4 py-3.5 border-b-2 font-bold transition-all cursor-pointer whitespace-nowrap",
                             activeTab === "admin-bookings" ? "border-brand-red text-white bg-white/[0.02]" : "border-transparent text-zinc-400 hover:text-white"
                           )}
                         >
-                          Agenda & Reservas
+                          Locações & Agenda
+                        </button>
+                        <button
+                          onClick={() => setActiveTab("admin-users")}
+                          className={cn(
+                            "px-4 py-3.5 border-b-2 font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5",
+                            activeTab === "admin-users" ? "border-brand-red text-white bg-white/[0.02]" : "border-transparent text-zinc-400 hover:text-white"
+                          )}
+                        >
+                          <Users size={13} className="text-emerald-400" /> Usuários & Fotógrafos
+                        </button>
+                        <button
+                          onClick={() => setActiveTab("admin-hero")}
+                          className={cn(
+                            "px-4 py-3.5 border-b-2 font-bold transition-all cursor-pointer whitespace-nowrap",
+                            activeTab === "admin-hero" ? "border-brand-red text-white bg-white/[0.02]" : "border-transparent text-zinc-400 hover:text-white"
+                          )}
+                        >
+                          Banner Hero
+                        </button>
+                        <button
+                          onClick={() => setActiveTab("admin-spaces")}
+                          className={cn(
+                            "px-4 py-3.5 border-b-2 font-bold transition-all cursor-pointer whitespace-nowrap",
+                            activeTab === "admin-spaces" ? "border-brand-red text-white bg-white/[0.02]" : "border-transparent text-zinc-400 hover:text-white"
+                          )}
+                        >
+                          Nosso Espaço
+                        </button>
+                        <button
+                          onClick={() => setActiveTab("admin-plans")}
+                          className={cn(
+                            "px-4 py-3.5 border-b-2 font-bold transition-all cursor-pointer whitespace-nowrap",
+                            activeTab === "admin-plans" ? "border-brand-red text-white bg-white/[0.02]" : "border-transparent text-zinc-400 hover:text-white"
+                          )}
+                        >
+                          Planos Coworking
                         </button>
                         <button
                           onClick={() => setActiveTab("admin-simulator")}
                           className={cn(
-                            "flex-1 py-4 text-center font-mono uppercase tracking-wider font-semibold border-b-2 transition-all cursor-pointer",
+                            "px-4 py-3.5 border-b-2 font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5",
                             activeTab === "admin-simulator" ? "border-brand-red text-white bg-white/[0.02]" : "border-transparent text-zinc-400 hover:text-white"
                           )}
                         >
-                          Valores & Itens
+                          <Camera size={13} className="text-amber-400" /> Ativos & Simulador
+                        </button>
+                        <button
+                          onClick={() => setActiveTab("admin-testimonials")}
+                          className={cn(
+                            "px-4 py-3.5 border-b-2 font-bold transition-all cursor-pointer whitespace-nowrap",
+                            activeTab === "admin-testimonials" ? "border-brand-red text-white bg-white/[0.02]" : "border-transparent text-zinc-400 hover:text-white"
+                          )}
+                        >
+                          Depoimentos
                         </button>
                         <button
                           onClick={() => setActiveTab("admin-chat")}
                           className={cn(
-                            "flex-1 py-4 text-center font-mono uppercase tracking-wider font-semibold border-b-2 transition-all cursor-pointer",
+                            "px-4 py-3.5 border-b-2 font-bold transition-all cursor-pointer whitespace-nowrap",
                             activeTab === "admin-chat" ? "border-brand-red text-white bg-white/[0.02]" : "border-transparent text-zinc-400 hover:text-white"
                           )}
                         >
@@ -1084,72 +1006,80 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
                         <button
                           onClick={() => setActiveTab("admin-logs")}
                           className={cn(
-                            "flex-1 py-4 text-center font-mono uppercase tracking-wider font-semibold border-b-2 transition-all cursor-pointer flex items-center justify-center gap-1.5",
+                            "px-4 py-3.5 border-b-2 font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5",
                             activeTab === "admin-logs" ? "border-brand-red text-white bg-white/[0.02]" : "border-transparent text-zinc-400 hover:text-white"
                           )}
                         >
-                          <ShieldAlert size={14} className="text-[#d93838]" />
-                          Logs & Analytics
+                          <ShieldAlert size={13} className="text-red-400" /> Logs & Vitals
                         </button>
                       </>
                     )}
                   </div>
 
-                  {/* Tab contents */}
-                  <div className="flex-1 p-6 overflow-y-auto">
+                  {/* TAB CONTENTS */}
+                  <div className="flex-1 p-6 overflow-y-auto space-y-6">
                     
-                    {/* CLIENT: MY BOOKINGS TAB */}
-                    {activeTab === "bookings" && !bookingToPay && (
+                    {/* CLIENT: MY BOOKINGS & SIGNED CONTRACT */}
+                    {activeTab === "bookings" && (
                       <div className="space-y-4">
                         <div className="flex items-center justify-between mb-2">
-                          <h5 className="font-display font-bold text-xs uppercase tracking-widest text-[#d93838]">Histórico de Locações</h5>
-                          <span className="font-mono text-[9px] text-zinc-500 uppercase">{myBookings.length} agendamentos</span>
+                          <h5 className="font-display font-bold text-xs uppercase tracking-widest text-[#d93838]">Histórico das Suas Locações</h5>
+                          <span className="font-mono text-[10px] text-zinc-500 uppercase">{myBookings.length} reservas registradas</span>
                         </div>
 
                         {myBookings.length === 0 ? (
-                          <div className="text-center py-12 bg-stone-900/40 border border-white/5 rounded-sm p-6">
-                            <Calendar size={24} className="mx-auto text-zinc-600 mb-3" />
-                            <p className="text-zinc-400 text-xs">Nenhum agendamento encontrado.</p>
-                            <p className="text-zinc-600 text-[10px] mt-1">Sua simulação aparecerá aqui se você se cadastrar no mesmo e-mail.</p>
+                          <div className="text-center py-12 bg-stone-900 border border-white/5 rounded p-6 space-y-3">
+                            <Calendar size={28} className="mx-auto text-zinc-600" />
+                            <p className="text-zinc-400 text-xs">Você ainda não realizou agendamentos.</p>
+                            <a href="#reservar" onClick={onClose} className="inline-block bg-brand-red text-white font-mono text-[10px] uppercase px-4 py-2 rounded font-bold">
+                              Simular Reserva Agora
+                            </a>
                           </div>
                         ) : (
                           <div className="space-y-3">
-                            {myBookings.map((booking) => (
-                              <div key={booking.id} className="bg-stone-900 border border-white/5 p-4 rounded-sm flex flex-col justify-between gap-3">
-                                <div className="flex justify-between items-start">
+                            {myBookings.map((b) => (
+                              <div key={b.id} className="bg-stone-900 border border-white/10 p-5 rounded space-y-4">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/5 pb-3">
                                   <div>
-                                    <span className="font-mono text-[9px] bg-white/5 text-zinc-400 px-2 py-0.5 rounded uppercase font-bold">Ref: #{booking.id}</span>
-                                    <h6 className="font-sans font-bold text-sm text-white mt-1.5">{booking.spaceName}</h6>
-                                    <p className="text-zinc-400 text-[11px] font-mono mt-0.5">{booking.date} • {booking.timeSlot}</p>
+                                    <span className="font-mono text-[9px] bg-white/5 text-zinc-400 px-2 py-0.5 rounded font-bold uppercase">
+                                      Reserva #{b.id}
+                                    </span>
+                                    <h6 className="font-sans font-bold text-sm text-white mt-1">{b.spaceName}</h6>
+                                    <p className="text-zinc-400 text-xs font-mono">{b.date} • {b.timeSlot} ({b.durationHours}h)</p>
                                   </div>
                                   <div className="text-right">
                                     <span className={cn(
-                                      "inline-block font-mono text-[9px] uppercase tracking-widest px-2.5 py-1 rounded font-bold",
-                                      booking.status === "Reservada" ? "bg-emerald-950/60 text-emerald-400 border border-emerald-500/15" :
-                                      booking.status === "Simulada" ? "bg-amber-950/60 text-amber-400 border border-amber-500/15" :
-                                      "bg-zinc-800 text-zinc-300"
+                                      "inline-block font-mono text-[9px] uppercase px-2.5 py-1 rounded font-bold",
+                                      b.status === "Reservada" ? "bg-emerald-950 text-emerald-400 border border-emerald-500/20" : "bg-amber-950 text-amber-400 border border-amber-500/20"
                                     )}>
-                                      {booking.status}
+                                      {b.status}
                                     </span>
-                                    <p className="text-[#d93838] font-bold text-sm mt-2">R$ {booking.totalPrice},00</p>
+                                    <p className="text-brand-red font-bold text-base mt-1">R$ {b.totalPrice?.toFixed(2)}</p>
                                   </div>
                                 </div>
 
-                                {/* Booking action triggers */}
-                                <div className="border-t border-white/5 pt-3 flex items-center justify-between">
-                                  <span className="text-zinc-500 text-[10px] font-mono">
-                                    Sinal de Reserva: {booking.depositPaid ? "✅ PAGO" : "🔴 PENDENTE"}
+                                <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                                  <span className="text-zinc-400 text-xs font-mono">
+                                    Sinal de Reserva: {b.depositPaid ? "✅ PAGO" : "🔴 PENDENTE"}
                                   </span>
-                                  {!booking.depositPaid ? (
+
+                                  <div className="flex items-center gap-2">
                                     <button
-                                      onClick={() => { setBookingToPay(booking); setPaymentStep("method"); }}
-                                      className="bg-[#d93838] hover:bg-red-700 text-white font-mono text-[10px] uppercase tracking-widest px-3.5 py-1.5 rounded-sm transition-all"
+                                      onClick={() => { setContractBooking(b); setIsContractOpen(true); }}
+                                      className="bg-emerald-950/80 hover:bg-emerald-900 text-emerald-400 border border-emerald-500/30 font-mono text-[10px] uppercase tracking-wider px-3 py-1.5 rounded flex items-center gap-1.5 transition-all cursor-pointer font-bold"
                                     >
-                                      Pagar Sinal R$100
+                                      <FileText size={12} /> Contrato de Locação (PDF)
                                     </button>
-                                  ) : (
-                                    <span className="text-zinc-400 text-[10px] font-mono uppercase bg-emerald-950/20 px-2 py-0.5 rounded border border-emerald-500/10">Reservado</span>
-                                  )}
+
+                                    {!b.depositPaid && (
+                                      <button
+                                        onClick={() => { setBookingToPay(b); setPaymentStep("method"); }}
+                                        className="bg-brand-red hover:bg-red-700 text-white font-mono text-[10px] uppercase px-3.5 py-1.5 rounded font-bold transition-all cursor-pointer"
+                                      >
+                                        Pagar Sinal R$100
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
                             ))}
@@ -1158,1045 +1088,706 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
                       </div>
                     )}
 
-                    {/* CLIENT: INFINITEPAY PAYMENT FLOW OVERLAY/VIEW */}
-                    {activeTab === "bookings" && bookingToPay && (
-                      <div className="bg-stone-900 border border-white/5 p-6 rounded-sm space-y-6">
-                        <div className="flex items-center justify-between border-b border-white/5 pb-4">
-                          <div>
-                            <span className="font-mono text-[9px] text-[#d93838] uppercase">Checkout com InfinitePay</span>
-                            <h5 className="font-display font-bold text-sm uppercase">Reserva #{bookingToPay.id}</h5>
-                          </div>
-                          <button onClick={() => setBookingToPay(null)} className="text-zinc-500 hover:text-white text-xs font-mono uppercase">Voltar</button>
+                    {/* CLIENT: WRITE TESTIMONIAL */}
+                    {activeTab === "write-testimonial" && (
+                      <div className="bg-stone-900 border border-white/10 p-6 rounded space-y-6">
+                        <div>
+                          <h5 className="font-display font-bold text-sm uppercase tracking-wider text-amber-400 flex items-center gap-2">
+                            <Star size={16} /> Avaliar e Escrever Depoimento pro Site
+                          </h5>
+                          <p className="text-zinc-400 text-xs font-sans mt-1">
+                            Seu depoimento aparecerá na seção "Quem Faz Acontecer Conosco" na página principal do Estúdio Triângulo.
+                          </p>
                         </div>
 
-                        <div className="space-y-4">
-                          <p className="text-zinc-400 text-xs leading-relaxed">
-                            Garante o bloqueio imediato do horário na agenda e sua data de locação garantida! Escolha o formato de pagamento via <strong>InfinitePay</strong>:
-                          </p>
+                        {testimonialSuccess && (
+                          <div className="bg-emerald-950/60 border border-emerald-500/30 text-emerald-300 p-3 rounded text-xs flex items-center gap-2">
+                            <CheckCircle2 size={16} /> {testimonialSuccess}
+                          </div>
+                        )}
 
-                          <div className="bg-stone-950 border border-white/5 p-4 rounded-sm space-y-3">
-                            <span className="font-mono text-[9px] uppercase tracking-widest text-zinc-500 block">Opção de Pagamento</span>
-                            
-                            <label className="flex items-center gap-3 cursor-pointer group">
-                              <input 
-                                type="radio" 
-                                name="chargeAmountType"
-                                checked={!payFullBooking}
-                                onChange={() => setPayFullBooking(false)}
-                                className="accent-[#d93838]" 
-                              />
-                              <div className="text-left">
-                                <span className="text-xs text-white block group-hover:text-brand-red transition-all">Pagar apenas o Sinal de Reserva (R$ 100,00)</span>
-                                <span className="text-[10px] text-zinc-500 block">O restante (R$ {(bookingToPay.totalPrice - 100).toFixed(2)}) é pago presencialmente no estúdio.</span>
-                              </div>
+                        <form onSubmit={handleSubmitTestimonial} className="space-y-4">
+                          <div>
+                            <label className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest block mb-1">
+                              Sua Nota / Estrelas (1 a 5)
                             </label>
-
-                            <div className="border-t border-white/5 my-2"></div>
-
-                            <label className="flex items-center gap-3 cursor-pointer group">
-                              <input 
-                                type="radio" 
-                                name="chargeAmountType"
-                                checked={payFullBooking}
-                                onChange={() => setPayFullBooking(true)}
-                                className="accent-[#d93838]" 
-                              />
-                              <div className="text-left">
-                                <span className="text-xs text-white block group-hover:text-brand-red transition-all">Pagar o Valor Integral da Locação (R$ {bookingToPay.totalPrice.toFixed(2)})</span>
-                                <span className="text-[10px] text-zinc-500 block">Quita 100% da sua locação antecipadamente, sem pendências no estúdio.</span>
-                              </div>
-                            </label>
+                            <div className="flex items-center gap-2">
+                              {[1, 2, 3, 4, 5].map((star) => (
+                                <button
+                                  key={star}
+                                  type="button"
+                                  onClick={() => setTestimonialRating(star)}
+                                  className="p-1 hover:scale-110 transition-transform cursor-pointer"
+                                >
+                                  <Star size={22} className={star <= testimonialRating ? "fill-amber-400 text-amber-400" : "text-zinc-600"} />
+                                </button>
+                              ))}
+                            </div>
                           </div>
 
-                          <div className="bg-stone-950/40 p-3 rounded border border-white/5 space-y-2">
-                            <div className="flex justify-between text-xs">
-                              <span className="text-zinc-500 font-mono uppercase text-[10px]">Total do Agendamento</span>
-                              <span className="text-white font-bold">R$ {bookingToPay.totalPrice.toFixed(2)}</span>
-                            </div>
-                            <div className="flex justify-between text-xs border-t border-white/5 pt-2">
-                              <span className="text-[#d93838] font-mono uppercase text-[10px] font-bold">Valor a ser cobrado agora</span>
-                              <span className="text-[#d93838] font-bold font-mono text-sm">
-                                R$ {payFullBooking ? bookingToPay.totalPrice.toFixed(2) : "100,00"}
-                              </span>
-                            </div>
+                          <div>
+                            <label className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest block mb-1">
+                              Sua Especialidade / Cargo (ex: Fotógrafo de Moda, Diretor de Cena)
+                            </label>
+                            <input
+                              type="text"
+                              value={testimonialRole}
+                              onChange={(e) => setTestimonialRole(e.target.value)}
+                              placeholder="Ex: Fotógrafo Autoral & Publicitário"
+                              className="w-full bg-stone-950 border border-white/10 px-4 py-2 rounded text-xs text-white focus:outline-none focus:border-amber-400"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest block mb-1">
+                              Seu Depoimento sobre a experiência no Estúdio *
+                            </label>
+                            <textarea
+                              required
+                              rows={4}
+                              value={testimonialQuote}
+                              onChange={(e) => setTestimonialQuote(e.target.value)}
+                              placeholder="Conte como foi sua produção, atendimento, infraestrutura ou iluminação do Triângulo..."
+                              className="w-full bg-stone-950 border border-white/10 p-3 rounded text-xs text-white focus:outline-none focus:border-amber-400"
+                            />
                           </div>
 
                           <button
-                            onClick={initiateInfinitePay}
-                            disabled={paying}
-                            className="w-full bg-[#d93838] hover:bg-red-700 disabled:opacity-50 text-white font-mono text-[11px] py-3.5 rounded font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-lg shadow-brand-red/10"
+                            type="submit"
+                            disabled={testimonialLoading}
+                            className="bg-amber-500 hover:bg-amber-600 text-black font-mono text-xs uppercase tracking-widest px-6 py-3 rounded font-bold transition-all cursor-pointer"
                           >
-                            {paying ? (
-                              <>
-                                <RefreshCw className="animate-spin" size={14} />
-                                Gerando Checkout Seguro...
-                              </>
-                            ) : (
-                              <>
-                                <CreditCard size={14} />
-                                Ir para Pagamento Seguro InfinitePay
-                              </>
-                            )}
+                            {testimonialLoading ? "Publicando..." : "Enviar Depoimento pro Site"}
                           </button>
+                        </form>
+                      </div>
+                    )}
 
-                          <p className="text-[10px] text-zinc-500 text-center font-mono uppercase tracking-wider">
-                            Pix & Cartão de Crédito em até 12x • Processamento seguro por InfinitePay
-                          </p>
+                    {/* CLIENT: PROFILE */}
+                    {activeTab === "profile" && (
+                      <div className="bg-stone-900 border border-white/10 p-6 rounded space-y-4">
+                        <h5 className="font-display font-bold text-xs uppercase tracking-wider text-white">Dados do Seu Perfil</h5>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                          <div>
+                            <span className="text-[10px] font-mono text-zinc-500 uppercase block">Nome</span>
+                            <strong className="text-white font-mono">{profileName}</strong>
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-mono text-zinc-500 uppercase block">E-mail</span>
+                            <strong className="text-white font-mono">{user.email}</strong>
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-mono text-zinc-500 uppercase block">Tipo de Conta</span>
+                            <strong className="text-emerald-400 font-mono uppercase">{role}</strong>
+                          </div>
                         </div>
                       </div>
                     )}
 
-                    {/* CLIENT: PROFILE TAB */}
-                    {activeTab === "profile" && (
-                      <form onSubmit={handleProfileUpdate} className="space-y-6">
-                        <div className="flex flex-col items-center gap-4 border-b border-white/5 pb-6">
-                          <div className="relative group">
-                            <div className="h-20 w-20 rounded-full border border-white/10 overflow-hidden bg-stone-900 flex items-center justify-center">
-                              {profileAvatar ? (
-                                <img src={profileAvatar} alt="Avatar" className="w-full h-full object-cover" />
-                              ) : (
-                                <User size={32} className="text-zinc-600" />
-                              )}
-                            </div>
-                            <label className="absolute bottom-0 right-0 bg-[#d93838] p-1.5 rounded-full border border-[#181818] cursor-pointer hover:bg-red-600 transition-all">
-                              <Upload size={10} className="text-white" />
-                              <input
-                                type="file"
-                                accept="image/*"
-                                onChange={handleAvatarFile}
-                                className="hidden"
-                              />
-                            </label>
-                          </div>
-                          <span className="text-[10px] font-mono uppercase tracking-widest text-zinc-500">Foto do Perfil (opcional)</span>
-                        </div>
-
-                        <div className="space-y-4">
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-mono uppercase tracking-wider text-zinc-400 block">Nome Completo</label>
-                            <input
-                              type="text"
-                              value={profileName}
-                              onChange={(e) => setProfileName(e.target.value)}
-                              className="w-full bg-stone-900 border border-white/5 rounded px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-brand-red"
-                              required
-                            />
-                          </div>
-
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-mono uppercase tracking-wider text-zinc-400 block">Telefone / WhatsApp</label>
-                            <input
-                              type="tel"
-                              value={profilePhone}
-                              onChange={(e) => setProfilePhone(e.target.value)}
-                              className="w-full bg-stone-900 border border-white/5 rounded px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-brand-red"
-                            />
-                          </div>
-
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-mono uppercase tracking-wider text-zinc-400 block">E-mail Cadastrado</label>
-                            <input
-                              type="email"
-                              value={user?.email || ""}
-                              className="w-full bg-stone-900 border border-white/5 rounded px-3.5 py-2.5 text-xs text-zinc-500 cursor-not-allowed"
-                              disabled
-                            />
-                          </div>
-                        </div>
-
-                        <div className="pt-4 border-t border-white/5 flex gap-4">
-                          <button
-                            type="button"
-                            onClick={handleSignOut}
-                            className="flex-1 bg-stone-900 border border-white/5 hover:bg-stone-950 text-zinc-400 hover:text-white font-mono text-[10px] py-3 rounded-sm font-bold uppercase tracking-widest transition-all cursor-pointer"
-                          >
-                            Sair da Conta
-                          </button>
-                          <button
-                            type="submit"
-                            className="flex-1 bg-[#d93838] hover:bg-red-700 text-white font-mono text-[10px] py-3 rounded-sm font-bold uppercase tracking-widest transition-all shadow-lg shadow-brand-red/10 cursor-pointer"
-                          >
-                            Salvar Alterações
-                          </button>
-                        </div>
-                      </form>
-                    )}
-
-                    {/* CLIENT: CHAT SUPPORT TAB */}
+                    {/* CLIENT: CHAT */}
                     {activeTab === "chat" && (
-                      <div className="flex flex-col h-[calc(100vh-220px)]">
-                        <div className="bg-stone-900/40 border border-white/5 p-3 rounded-sm mb-4 flex items-center justify-between">
-                          <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider">Suporte Direto</span>
-                          <a 
-                            href="https://api.whatsapp.com/send?phone=5511961959349" 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="text-[#d93838] text-[9px] font-mono uppercase font-bold hover:underline"
-                          >
-                            WhatsApp Direto
-                          </a>
-                        </div>
-
-                        {/* Message log */}
-                        <div className="flex-1 overflow-y-auto space-y-3 p-2 border border-white/5 rounded-sm bg-stone-950 mb-4 h-64 min-h-0">
+                      <div className="bg-stone-900 border border-white/10 rounded p-4 flex flex-col h-[450px]">
+                        <h5 className="font-display font-bold text-xs uppercase tracking-wider text-white mb-3">Atendimento e Suporte Direto</h5>
+                        <div className="flex-1 overflow-y-auto space-y-2 p-2 bg-stone-950 rounded border border-white/5">
                           {chatMessages.length === 0 ? (
-                            <div className="text-center py-12 text-zinc-600 text-[11px] font-mono">
-                              Envie uma mensagem abaixo para iniciar uma conversa diretamente com o administrador do estúdio!
-                            </div>
+                            <p className="text-center py-8 text-zinc-600 text-xs font-mono">Nenhuma mensagem ainda. Envie uma dúvida para a equipe!</p>
                           ) : (
-                            chatMessages.map((msg) => {
-                              const isMe = msg.senderId === user.uid;
-                              return (
-                                <div key={msg.id} className={cn("flex flex-col", isMe ? "items-end" : "items-start")}>
-                                  <div className={cn(
-                                    "p-3 rounded-md text-xs max-w-xs",
-                                    isMe ? "bg-[#d93838] text-white" : "bg-zinc-800 text-zinc-200"
-                                  )}>
-                                    <span className="block text-[8px] font-mono text-white/40 uppercase mb-1 font-bold">
-                                      {msg.senderName}
-                                    </span>
-                                    {msg.text}
-                                  </div>
-                                </div>
-                              );
-                            })
+                            chatMessages.map((m) => (
+                              <div key={m.id} className={cn("max-w-[80%] p-3 rounded text-xs leading-relaxed", m.senderId === user.uid ? "bg-brand-red text-white ml-auto" : "bg-stone-800 text-zinc-200")}>
+                                <p>{m.text}</p>
+                                <span className="text-[8px] opacity-60 font-mono block text-right mt-1">{new Date(m.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
+                              </div>
+                            ))
                           )}
                           <div ref={chatEndRef} />
                         </div>
-
-                        <form onSubmit={handleSendMessage} className="flex gap-2">
-                          <input
-                            type="text"
-                            value={newMsg}
-                            onChange={(e) => setNewMsg(e.target.value)}
-                            placeholder="Escreva sua mensagem..."
-                            className="flex-1 bg-stone-900 border border-white/5 rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-brand-red"
-                          />
-                          <button
-                            type="submit"
-                            className="bg-[#d93838] hover:bg-red-700 text-white p-2.5 rounded transition-all shrink-0 cursor-pointer"
-                          >
-                            <Send size={14} />
-                          </button>
+                        <form onSubmit={async (e) => {
+                          e.preventDefault();
+                          if (!newMsg.trim()) return;
+                          await addDoc(collection(db, "messages"), cleanFirestoreData({
+                            id: "msg-" + Date.now(),
+                            senderId: user.uid,
+                            senderName: profileName,
+                            recipientId: "admin",
+                            text: newMsg,
+                            createdAt: new Date().toISOString()
+                          }));
+                          setNewMsg("");
+                        }} className="flex gap-2 mt-3">
+                          <input type="text" value={newMsg} onChange={(e) => setNewMsg(e.target.value)} placeholder="Digite sua mensagem para a gerência..." className="flex-1 bg-stone-950 border border-white/10 px-3 py-2 rounded text-xs text-white focus:outline-none" />
+                          <button type="submit" className="bg-brand-red text-white font-mono text-xs px-4 rounded font-bold">Enviar</button>
                         </form>
                       </div>
                     )}
 
-                    {/* ADMIN: BOOKINGS AGENDA TAB */}
+                    {/* ADMIN: ANALYTICS DASHBOARD */}
+                    {activeTab === "admin-analytics" && (
+                      <AdminAnalyticsDashboard bookings={allBookings} />
+                    )}
+
+                    {/* ADMIN: BOOKINGS AGENDA & CONTRACT VIEW */}
                     {activeTab === "admin-bookings" && (
                       <div className="space-y-4">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/5 pb-4">
-                          <h5 className="font-display font-bold text-xs uppercase tracking-widest text-[#d93838]">Reservas e Orçamentos</h5>
-                          
-                          {/* Filter selectors */}
-                          <div className="flex gap-1 bg-stone-950 p-1 rounded text-[10px] font-mono">
-                            {["All", "Simulada", "Reservada"].map(f => (
-                              <button
-                                key={f}
-                                onClick={() => setBookingFilter(f)}
-                                className={cn(
-                                  "px-2 py-1 rounded transition-all font-semibold uppercase",
-                                  bookingFilter === f ? "bg-[#d93838] text-white font-bold" : "text-zinc-500 hover:text-white"
-                                )}
-                              >
-                                {f}
-                              </button>
+                        <div className="flex items-center justify-between">
+                          <h5 className="font-display font-bold text-xs uppercase tracking-widest text-emerald-400">Gerenciamento Geral de Locações</h5>
+                          <span className="font-mono text-[10px] text-zinc-500 uppercase">{allBookings.length} locações gravadas</span>
+                        </div>
+
+                        <div className="space-y-3">
+                          {allBookings.map((b) => (
+                            <div key={b.id} className="bg-stone-900 border border-white/10 p-4 rounded space-y-3">
+                              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                                <div>
+                                  <span className="font-mono text-[9px] bg-white/5 text-zinc-400 px-2 py-0.5 rounded font-bold uppercase">Ref: #{b.id}</span>
+                                  <h6 className="font-bold text-sm text-white mt-1">{b.clientName} ({b.clientEmail})</h6>
+                                  <p className="text-zinc-400 text-xs font-mono">{b.spaceName} • {b.date} • {b.timeSlot} ({b.durationHours}h)</p>
+                                </div>
+                                <div className="text-right">
+                                  <span className="font-mono text-xs font-bold text-brand-red block">R$ {b.totalPrice?.toFixed(2)}</span>
+                                  <span className="text-[10px] font-mono text-emerald-400 block">{b.depositPaid ? "✅ Sinal Pago" : "🔴 Sinal Pendente"}</span>
+                                </div>
+                              </div>
+
+                              <div className="border-t border-white/5 pt-3 flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[10px] font-mono text-zinc-500 uppercase">Alterar Status:</span>
+                                  {["Simulada", "Pendente", "Reservada", "Concluída", "Cancelada"].map((st) => (
+                                    <button
+                                      key={st}
+                                      onClick={async () => {
+                                        await updateDoc(doc(db, "bookings", b.id), cleanFirestoreData({ status: st }));
+                                      }}
+                                      className={cn(
+                                        "text-[9px] font-mono px-2 py-0.5 rounded cursor-pointer transition-all",
+                                        b.status === st ? "bg-brand-red text-white font-bold" : "bg-stone-950 text-zinc-400 hover:text-white"
+                                      )}
+                                    >
+                                      {st}
+                                    </button>
+                                  ))}
+                                </div>
+
+                                <button
+                                  onClick={() => { setContractBooking(b); setIsContractOpen(true); }}
+                                  className="bg-emerald-950 hover:bg-emerald-900 text-emerald-400 border border-emerald-500/30 text-[10px] font-mono uppercase px-3 py-1.5 rounded flex items-center gap-1.5 cursor-pointer font-bold"
+                                >
+                                  <Download size={12} className="text-brand-red" /> Baixar Contrato PDF
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ADMIN: USER MANAGEMENT & PHOTOGRAPHER FREQUENCY */}
+                    {activeTab === "admin-users" && (
+                      <div className="space-y-6">
+                        <div>
+                          <h5 className="font-display font-bold text-xs uppercase tracking-widest text-emerald-400 flex items-center gap-2">
+                            <Users size={16} /> Gestão de Usuários & Estatísticas por Fotógrafo
+                          </h5>
+                          <p className="text-zinc-400 text-xs font-sans mt-1">
+                            Acompanhe quantas vezes o mesmo fotógrafo locou, histórico completo de reservas e permissões de acesso.
+                          </p>
+                        </div>
+
+                        {/* Top Frequency Summary Cards */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          <div className="bg-stone-900 border border-white/5 p-4 rounded text-left">
+                            <span className="font-mono text-[9px] text-zinc-500 uppercase block">Total Usuários</span>
+                            <span className="font-mono text-xl font-bold text-white block mt-1">{usersList.length}</span>
+                          </div>
+                          <div className="bg-stone-900 border border-white/5 p-4 rounded text-left">
+                            <span className="font-mono text-[9px] text-zinc-500 uppercase block">Total Locações</span>
+                            <span className="font-mono text-xl font-bold text-emerald-400 block mt-1">{allBookings.length}</span>
+                          </div>
+                          <div className="bg-stone-900 border border-white/5 p-4 rounded text-left">
+                            <span className="font-mono text-[9px] text-zinc-500 uppercase block">Fotógrafos Recorrentes</span>
+                            <span className="font-mono text-xl font-bold text-amber-400 block mt-1">
+                              {userFrequencyMap.filter(u => u.count > 1).length}
+                            </span>
+                          </div>
+                          <div className="bg-stone-900 border border-white/5 p-4 rounded text-left">
+                            <span className="font-mono text-[9px] text-zinc-500 uppercase block">Faturamento Geral</span>
+                            <span className="font-mono text-base font-bold text-brand-red block mt-1">
+                              R$ {allBookings.reduce((sum, b) => sum + (b.totalPrice || 0), 0).toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Search Filter Bar */}
+                        <div className="relative">
+                          <Search size={16} className="absolute left-3.5 top-3 text-zinc-500" />
+                          <input
+                            type="text"
+                            value={userSearchQuery}
+                            onChange={(e) => setUserSearchQuery(e.target.value)}
+                            placeholder="Buscar fotógrafo por nome, e-mail ou telefone..."
+                            className="w-full bg-stone-900 border border-white/10 pl-10 pr-4 py-2.5 rounded text-xs text-white focus:outline-none focus:border-emerald-400"
+                          />
+                        </div>
+
+                        {/* Photographer Rental Frequency Ranking Table */}
+                        <div className="bg-stone-900 border border-white/10 rounded overflow-hidden space-y-3 p-4">
+                          <h6 className="font-mono text-[10px] text-zinc-400 uppercase font-bold tracking-wider">
+                            Ranking de Frequência de Locação por Fotógrafo:
+                          </h6>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-left font-mono text-xs text-zinc-300">
+                              <thead className="bg-stone-950 text-zinc-500 text-[9px] uppercase">
+                                <tr>
+                                  <th className="p-2.5">Fotógrafo / Cliente</th>
+                                  <th className="p-2.5">Contato</th>
+                                  <th className="p-2.5 text-center">Nº de Locações</th>
+                                  <th className="p-2.5 text-right">Total Investido</th>
+                                  <th className="p-2.5 text-right">Última Locação</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-white/5">
+                                {userFrequencyMap
+                                  .filter(u => u.name.toLowerCase().includes(userSearchQuery.toLowerCase()) || u.email.toLowerCase().includes(userSearchQuery.toLowerCase()))
+                                  .map((f, idx) => (
+                                    <tr key={idx} className="hover:bg-white/[0.02]">
+                                      <td className="p-2.5 font-bold text-white">
+                                        {f.name}
+                                        <span className="block text-[9px] text-zinc-500 font-normal">{f.email}</span>
+                                      </td>
+                                      <td className="p-2.5 text-zinc-400">{f.phone}</td>
+                                      <td className="p-2.5 text-center font-bold text-emerald-400 bg-emerald-950/20 rounded">
+                                        {f.count}x
+                                      </td>
+                                      <td className="p-2.5 text-right font-bold text-brand-red">
+                                        R$ {f.totalSpent.toFixed(2)}
+                                      </td>
+                                      <td className="p-2.5 text-right text-zinc-400">{f.lastDate}</td>
+                                    </tr>
+                                  ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+
+                        {/* Registered Users List & Role / Block Controls */}
+                        <div className="bg-stone-900 border border-white/10 rounded p-4 space-y-3">
+                          <h6 className="font-mono text-[10px] text-zinc-400 uppercase font-bold tracking-wider">
+                            Controle de Acessos e Status da Conta:
+                          </h6>
+                          <div className="space-y-2">
+                            {usersList.map((u) => (
+                              <div key={u.id} className="bg-stone-950 p-3 rounded border border-white/5 flex items-center justify-between text-xs">
+                                <div>
+                                  <span className="font-bold text-white block">{u.name || "Fotógrafo"}</span>
+                                  <span className="text-[10px] text-zinc-500 font-mono block">{u.email} • {u.phone || "Sem tel"}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => handleToggleUserAdmin(u.id, u.role)}
+                                    className={cn(
+                                      "px-2.5 py-1 rounded text-[9px] font-mono uppercase font-bold border transition-all cursor-pointer",
+                                      u.role === "admin" ? "bg-purple-950 text-purple-400 border-purple-500/30" : "bg-stone-900 text-zinc-400 border-white/10"
+                                    )}
+                                  >
+                                    {u.role === "admin" ? "ADMIN" : "CLIENTE"}
+                                  </button>
+                                  <button
+                                    onClick={() => handleToggleUserBlock(u.id, u.isBlocked)}
+                                    className={cn(
+                                      "px-2.5 py-1 rounded text-[9px] font-mono uppercase font-bold border transition-all cursor-pointer",
+                                      u.isBlocked ? "bg-red-950 text-red-400 border-red-500/30" : "bg-emerald-950 text-emerald-400 border-emerald-500/30"
+                                    )}
+                                  >
+                                    {u.isBlocked ? "BLOQUEADO" : "ATIVO"}
+                                  </button>
+                                </div>
+                              </div>
                             ))}
                           </div>
                         </div>
-
-                        {allBookings.length === 0 ? (
-                          <div className="text-center py-12 text-zinc-500 text-xs bg-stone-900/40 rounded border border-white/5 p-6">
-                            Nenhum agendamento registrado na plataforma.
-                          </div>
-                        ) : (
-                          <div className="space-y-3">
-                            {allBookings
-                              .filter(b => bookingFilter === "All" || b.status === bookingFilter)
-                              .map((b) => (
-                                <div key={b.id} className="bg-stone-900 border border-white/5 p-4 rounded-sm space-y-3">
-                                  <div className="flex justify-between items-start">
-                                    <div>
-                                      <span className="font-mono text-[9px] bg-white/5 text-zinc-400 px-2 py-0.5 rounded font-bold uppercase">Ref: #{b.id}</span>
-                                      <h6 className="font-sans font-bold text-sm text-white mt-1.5">{b.spaceName}</h6>
-                                      <p className="text-zinc-400 text-[11px] font-mono mt-0.5">{b.date} • {b.timeSlot}</p>
-                                    </div>
-                                    <div className="text-right">
-                                      <select
-                                        value={b.status}
-                                        onChange={(e) => handleUpdateBookingStatus(b.id, e.target.value as any)}
-                                        className="bg-stone-950 border border-white/10 text-white font-mono text-[9px] rounded px-2 py-1 uppercase font-bold focus:outline-none"
-                                      >
-                                        <option value="Simulada">Simulada</option>
-                                        <option value="Pendente">Pendente</option>
-                                        <option value="Reservada">Reservada</option>
-                                        <option value="Concluída">Concluída</option>
-                                      </select>
-                                      <p className="text-[#d93838] font-bold text-sm mt-2">R$ {b.totalPrice},00</p>
-                                    </div>
-                                  </div>
-
-                                  <div className="bg-stone-950 p-2.5 rounded text-[11px] text-zinc-400 space-y-1 font-mono">
-                                    <p><strong className="text-zinc-500 uppercase">Cliente:</strong> {b.clientName}</p>
-                                    <p><strong className="text-zinc-500 uppercase">E-mail:</strong> {b.clientEmail}</p>
-                                    <p><strong className="text-zinc-500 uppercase">Fone/Whats:</strong> {b.clientPhone}</p>
-                                    {b.notes && <p><strong className="text-zinc-500 uppercase">Notas:</strong> {b.notes}</p>}
-                                    <p><strong className="text-zinc-500 uppercase">Sinal R$ 100:</strong> {b.depositPaid ? "✅ PAGO" : "🔴 Pendente"}</p>
-                                  </div>
-
-                                  <div className="flex items-center justify-between border-t border-white/5 pt-3">
-                                    <button
-                                      onClick={() => handleDeleteBooking(b.id)}
-                                      className="text-zinc-600 hover:text-[#d93838] font-mono text-[9px] uppercase transition-all"
-                                    >
-                                      Excluir Registro
-                                    </button>
-                                    <a
-                                      href={`https://api.whatsapp.com/send?phone=${b.clientPhone.replace(/\D/g, "")}`}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-[#d93838] font-mono text-[9px] uppercase hover:underline"
-                                    >
-                                      Contatar no Whats
-                                    </a>
-                                  </div>
-                                </div>
-                              ))}
-                          </div>
-                        )}
                       </div>
                     )}
 
-                    {/* ADMIN: MANAGE PRICES & ITEMS TAB */}
-                    {activeTab === "admin-simulator" && (
-                      <div className="space-y-6">
-                        <form onSubmit={handleSaveSimulatorSettings} className="space-y-4">
-                          <h5 className="font-display font-bold text-xs uppercase tracking-widest text-[#d93838] border-b border-white/5 pb-2">Preços do Simulador</h5>
-                          
-                          <div className="grid grid-cols-3 gap-3">
-                            <div className="space-y-1">
-                              <label className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 block">Preço Hora (R$)</label>
-                              <input
-                                type="number"
-                                value={simulatorHourly}
-                                onChange={(e) => setSimulatorHourly(parseInt(e.target.value))}
-                                className="w-full bg-stone-900 border border-white/5 rounded px-3 py-2 text-xs font-mono"
-                                required
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <label className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 block">Meio Período (R$)</label>
-                              <input
-                                type="number"
-                                value={simulatorHalfDay}
-                                onChange={(e) => setSimulatorHalfDay(parseInt(e.target.value))}
-                                className="w-full bg-stone-900 border border-white/5 rounded px-3 py-2 text-xs font-mono"
-                                required
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <label className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 block">Período Integral (R$)</label>
-                              <input
-                                type="number"
-                                value={simulatorFullDay}
-                                onChange={(e) => setSimulatorFullDay(parseInt(e.target.value))}
-                                className="w-full bg-stone-900 border border-white/5 rounded px-3 py-2 text-xs font-mono"
-                                required
-                              />
-                            </div>
-                          </div>
+                    {/* ADMIN: HERO BANNER CMS */}
+                    {activeTab === "admin-hero" && (
+                      <div className="bg-stone-900 border border-white/10 p-6 rounded space-y-6">
+                        <div>
+                          <h5 className="font-display font-bold text-xs uppercase tracking-widest text-[#d93838]">Controle Total da Seção Banner Hero</h5>
+                          <p className="text-zinc-400 text-xs font-sans mt-1">Altere o título principal, textos em destaque, imagem de fundo e botões da página inicial.</p>
+                        </div>
 
-                          <h5 className="font-display font-bold text-xs uppercase tracking-widest text-[#d93838] border-b border-white/5 pb-2 pt-4">Integração InfinitePay</h5>
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 block">Sua InfiniteTag (Handle do App)</label>
+                        {heroSaveSuccess && (
+                          <div className="bg-emerald-950/60 border border-emerald-500/30 text-emerald-300 p-3 rounded text-xs flex items-center gap-2">
+                            <CheckCircle2 size={16} /> {heroSaveSuccess}
+                          </div>
+                        )}
+
+                        <div className="space-y-4 text-xs">
+                          <div>
+                            <label className="text-[10px] font-mono text-zinc-400 uppercase block mb-1">Título Linha 1</label>
                             <input
                               type="text"
-                              value={infinitePayHandle}
-                              onChange={(e) => setInfinitePayHandle(e.target.value)}
-                              placeholder="ex: triangulofotoclub"
-                              className="w-full bg-stone-900 border border-white/5 rounded px-3 py-2 text-xs font-mono"
-                              required
+                              value={heroSettings.title1}
+                              onChange={(e) => setHeroSettings({ ...heroSettings, title1: e.target.value })}
+                              className="w-full bg-stone-950 border border-white/10 p-2.5 rounded text-white font-mono focus:outline-none focus:border-brand-red"
                             />
-                            <p className="text-[10px] text-zinc-500 italic mt-1">Essa é a sua tag do InfinitePay (ex: sem o caractere $ do início) usada para gerar links de checkout reais.</p>
                           </div>
 
-                          <h5 className="font-display font-bold text-xs uppercase tracking-widest text-[#d93838] border-b border-white/5 pb-2 pt-4">Hardware Opcional</h5>
-                          
-                          {/* Equipment list */}
-                          {equipments.length === 0 ? (
-                            <p className="text-zinc-600 text-[10px] font-mono uppercase">Lista de adicionais vazia.</p>
-                          ) : (
-                            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                              {equipments.map((eq) => (
-                                <div key={eq.id} className="bg-stone-950 p-2.5 rounded border border-white/5 flex items-center justify-between text-xs">
-                                  <div>
-                                    <span className="font-mono text-[9px] bg-stone-900 text-zinc-400 px-1.5 py-0.5 rounded font-bold uppercase mr-2">{eq.category}</span>
-                                    <strong className="text-white font-medium">{eq.name}</strong>
-                                    <p className="text-zinc-500 text-[10px]">{eq.description}</p>
-                                  </div>
-                                  <div className="flex items-center gap-3">
-                                    <span className="font-mono text-[#d93838] font-bold text-[11px]">R$ {eq.price}</span>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeleteEquipment(eq.id)}
-                                      className="text-zinc-600 hover:text-[#d93838] transition-colors"
-                                    >
-                                      <Trash2 size={13} />
-                                    </button>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
+                          <div>
+                            <label className="text-[10px] font-mono text-zinc-400 uppercase block mb-1">Título Linha 2 (Destaque Colorido)</label>
+                            <input
+                              type="text"
+                              value={heroSettings.title2}
+                              onChange={(e) => setHeroSettings({ ...heroSettings, title2: e.target.value })}
+                              className="w-full bg-stone-950 border border-white/10 p-2.5 rounded text-white font-mono focus:outline-none focus:border-brand-red"
+                            />
+                          </div>
 
-                          {/* Add equipment helper */}
-                          <div className="bg-stone-900/40 border border-white/5 p-4 rounded-sm space-y-3">
-                            <span className="font-mono text-[9px] uppercase tracking-widest text-zinc-400 font-bold block">Adicionar Equipamento</span>
-                            
-                            <div className="grid grid-cols-2 gap-3">
-                              <div className="space-y-1">
-                                <label className="text-[9px] font-mono uppercase tracking-wider text-zinc-500">Nome do Hardware</label>
-                                <input
-                                  type="text"
-                                  value={newEquipName}
-                                  onChange={(e) => setNewEquipName(e.target.value)}
-                                  placeholder="Ex: Iluminador Amaran"
-                                  className="w-full bg-stone-950 border border-white/5 rounded px-2.5 py-1.5 text-xs text-white"
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <label className="text-[9px] font-mono uppercase tracking-wider text-zinc-500">Categoria</label>
-                                <select
-                                  value={newEquipCategory}
-                                  onChange={(e) => setNewEquipCategory(e.target.value as any)}
-                                  className="w-full bg-stone-950 border border-white/5 rounded px-2.5 py-1.5 text-xs text-white"
-                                >
-                                  <option value="lighting">Iluminação</option>
-                                  <option value="camera">Câmera & Lente</option>
-                                  <option value="grip">Grip & Tripé</option>
-                                  <option value="scenery">Cenografia</option>
-                                </select>
-                              </div>
-                            </div>
+                          <div>
+                            <label className="text-[10px] font-mono text-zinc-400 uppercase block mb-1">Selo / Badge de Topo</label>
+                            <input
+                              type="text"
+                              value={heroSettings.badge}
+                              onChange={(e) => setHeroSettings({ ...heroSettings, badge: e.target.value })}
+                              className="w-full bg-stone-950 border border-white/10 p-2.5 rounded text-white font-mono focus:outline-none focus:border-brand-red"
+                            />
+                          </div>
 
-                            <div className="grid grid-cols-3 gap-3">
-                              <div className="space-y-1 col-span-1">
-                                <label className="text-[9px] font-mono uppercase tracking-wider text-zinc-500">Preço (R$)</label>
-                                <input
-                                  type="number"
-                                  value={newEquipPrice}
-                                  onChange={(e) => setNewEquipPrice(parseInt(e.target.value))}
-                                  className="w-full bg-stone-950 border border-white/5 rounded px-2.5 py-1.5 text-xs text-white"
-                                />
-                              </div>
-                              <div className="space-y-1 col-span-2">
-                                <label className="text-[9px] font-mono uppercase tracking-wider text-zinc-500">Breve Descrição</label>
-                                <input
-                                  type="text"
-                                  value={newEquipDesc}
-                                  onChange={(e) => setNewEquipDesc(e.target.value)}
-                                  placeholder="Descrição curta para o painel"
-                                  className="w-full bg-stone-950 border border-white/5 rounded px-2.5 py-1.5 text-xs text-white"
-                                />
-                              </div>
-                            </div>
+                          <div>
+                            <label className="text-[10px] font-mono text-zinc-400 uppercase block mb-1">Descrição / Subtítulo Hero</label>
+                            <textarea
+                              rows={3}
+                              value={heroSettings.description}
+                              onChange={(e) => setHeroSettings({ ...heroSettings, description: e.target.value })}
+                              className="w-full bg-stone-950 border border-white/10 p-2.5 rounded text-white font-mono focus:outline-none focus:border-brand-red"
+                            />
+                          </div>
 
-                            <button
-                              type="button"
-                              onClick={handleAddEquipment}
-                              className="w-full bg-stone-950 border border-white/10 hover:border-white/30 text-white font-mono text-[10px] py-2 rounded uppercase tracking-widest font-semibold cursor-pointer"
-                            >
-                              Adicionar à lista temporária
-                            </button>
+                          <div>
+                            <label className="text-[10px] font-mono text-zinc-400 uppercase block mb-1">URL da Imagem de Fundo</label>
+                            <input
+                              type="text"
+                              value={heroSettings.bgImage}
+                              onChange={(e) => setHeroSettings({ ...heroSettings, bgImage: e.target.value })}
+                              className="w-full bg-stone-950 border border-white/10 p-2.5 rounded text-white font-mono focus:outline-none focus:border-brand-red"
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="text-[10px] font-mono text-zinc-400 uppercase block mb-1">Texto Botão Principal</label>
+                              <input
+                                type="text"
+                                value={heroSettings.btnPrimary}
+                                onChange={(e) => setHeroSettings({ ...heroSettings, btnPrimary: e.target.value })}
+                                className="w-full bg-stone-950 border border-white/10 p-2.5 rounded text-white font-mono"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-mono text-zinc-400 uppercase block mb-1">Texto Botão Secundário</label>
+                              <input
+                                type="text"
+                                value={heroSettings.btnSecondary}
+                                onChange={(e) => setHeroSettings({ ...heroSettings, btnSecondary: e.target.value })}
+                                className="w-full bg-stone-950 border border-white/10 p-2.5 rounded text-white font-mono"
+                              />
+                            </div>
                           </div>
 
                           <button
-                            type="submit"
-                            className="w-full bg-[#d93838] hover:bg-red-700 text-white font-mono text-xs font-bold uppercase tracking-widest py-3.5 rounded-sm transition-all shadow-lg shadow-brand-red/10 cursor-pointer"
+                            onClick={handleSaveHeroSettings}
+                            className="bg-brand-red hover:bg-red-700 text-white font-mono text-xs uppercase px-6 py-3 rounded font-bold transition-all cursor-pointer"
                           >
-                            Salvar Configurações no Banco
+                            Salvar Alterações do Banner Hero
                           </button>
-                        </form>
+                        </div>
                       </div>
                     )}
 
-                    {/* ADMIN: MESSAGES INBOX TAB */}
-                    {activeTab === "admin-chat" && (
-                      <div className="grid grid-cols-12 gap-4 h-[calc(100vh-220px)]">
-                        {/* Users list (4 cols) */}
-                        <div className="col-span-4 border-r border-white/5 space-y-2 overflow-y-auto pr-2 max-h-full">
-                          <span className="font-mono text-[9px] uppercase tracking-widest text-zinc-500 block mb-2 font-bold">Clientes</span>
-                          {adminMessagesUsers.length === 0 ? (
-                            <p className="text-[10px] text-zinc-600 font-mono uppercase">Sem conversas.</p>
-                          ) : (
-                            adminMessagesUsers.map((u) => (
-                              <button
-                                key={u.uid}
-                                onClick={() => { setAdminSelectedUserId(u.uid); setAdminSelectedUserName(u.name); }}
-                                className={cn(
-                                  "w-full text-left p-2 rounded flex items-center gap-2 border transition-all text-[11px]",
-                                  adminSelectedUserId === u.uid 
-                                    ? "bg-[#d93838] border-red-500/30 text-white" 
-                                    : "bg-stone-900 border-white/5 text-zinc-400 hover:text-white"
-                                )}
-                              >
-                                <div className="h-6 w-6 rounded-full bg-zinc-800 flex items-center justify-center shrink-0 overflow-hidden font-bold">
-                                  {u.avatarUrl ? (
-                                    <img src={u.avatarUrl} alt="avatar" className="w-full h-full object-cover" />
-                                  ) : (
-                                    u.name[0]
-                                  )}
-                                </div>
-                                <span className="truncate font-semibold">{u.name}</span>
-                              </button>
-                            ))
-                          )}
+                    {/* ADMIN: NOSSO ESPAÇO CMS */}
+                    {activeTab === "admin-spaces" && (
+                      <div className="space-y-6">
+                        <div className="bg-stone-900 border border-white/10 p-6 rounded space-y-4">
+                          <h5 className="font-display font-bold text-xs uppercase tracking-widest text-[#d93838]">Cadastrar Novo Espaço ou Editar Existente</h5>
+                          {spaceSaveMsg && <div className="text-emerald-400 font-mono text-xs">{spaceSaveMsg}</div>}
+                          
+                          <form onSubmit={handleAddSpace} className="space-y-3 text-xs">
+                            <input type="text" required value={newSpaceName} onChange={(e) => setNewSpaceName(e.target.value)} placeholder="Nome do Espaço (ex: Triângulo Estúdio - Prisma)" className="w-full bg-stone-950 border border-white/10 p-2.5 rounded text-white" />
+                            <input type="text" value={newSpaceSubtitle} onChange={(e) => setNewSpaceSubtitle(e.target.value)} placeholder="Subtítulo Curto" className="w-full bg-stone-950 border border-white/10 p-2.5 rounded text-white" />
+                            <textarea rows={3} value={newSpaceDesc} onChange={(e) => setNewSpaceDesc(e.target.value)} placeholder="Descrição completa da infraestrutura..." className="w-full bg-stone-950 border border-white/10 p-2.5 rounded text-white" />
+                            <div className="grid grid-cols-3 gap-3">
+                              <input type="number" value={newSpaceHourly} onChange={(e) => setNewSpaceHourly(Number(e.target.value))} placeholder="Valor/Hora (R$)" className="bg-stone-950 border border-white/10 p-2 rounded text-white" />
+                              <input type="number" value={newSpaceHalfDay} onChange={(e) => setNewSpaceHalfDay(Number(e.target.value))} placeholder="Turno 4h (R$)" className="bg-stone-950 border border-white/10 p-2 rounded text-white" />
+                              <input type="number" value={newSpaceFullDay} onChange={(e) => setNewSpaceFullDay(Number(e.target.value))} placeholder="Diária 8h (R$)" className="bg-stone-950 border border-white/10 p-2 rounded text-white" />
+                            </div>
+                            <input type="text" value={newSpaceFeatures} onChange={(e) => setNewSpaceFeatures(e.target.value)} placeholder="Diferenciais separados por vírgula" className="w-full bg-stone-950 border border-white/10 p-2.5 rounded text-white" />
+                            <button type="submit" className="bg-brand-red text-white font-mono text-xs uppercase px-5 py-2.5 rounded font-bold">Salvar Espaço</button>
+                          </form>
                         </div>
 
-                        {/* Direct chat space (8 cols) */}
-                        <div className="col-span-8 flex flex-col h-full bg-stone-950/40 p-3 rounded border border-white/5">
+                        {/* List of Spaces */}
+                        <div className="bg-stone-900 border border-white/10 p-4 rounded space-y-3">
+                          <h6 className="font-mono text-[10px] text-zinc-400 uppercase font-bold">Espaços Cadastrados:</h6>
+                          <div className="space-y-2">
+                            {spacesList.map((s) => (
+                              <div key={s.id} className="bg-stone-950 p-3 rounded border border-white/5 flex items-center justify-between text-xs">
+                                <div>
+                                  <strong className="text-white block">{s.name}</strong>
+                                  <span className="text-[10px] text-zinc-500 font-mono block">R$ {s.hourlyRate}/h • Turno: R$ {s.halfDayRate}</span>
+                                </div>
+                                <button onClick={() => handleDeleteSpace(s.id)} className="text-red-400 hover:text-red-300 p-1">
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ADMIN: COWOKING PLANS CMS */}
+                    {activeTab === "admin-plans" && (
+                      <div className="space-y-6">
+                        <div className="bg-stone-900 border border-white/10 p-6 rounded space-y-4">
+                          <h5 className="font-display font-bold text-xs uppercase tracking-widest text-[#d93838]">Gestão dos Planos de Coworking</h5>
+                          {planSaveMsg && <div className="text-emerald-400 font-mono text-xs">{planSaveMsg}</div>}
+                          
+                          <form onSubmit={handleAddPlan} className="space-y-3 text-xs">
+                            <input type="text" required value={newPlanName} onChange={(e) => setNewPlanName(e.target.value)} placeholder="Nome do Plano (ex: Standard, Master)" className="w-full bg-stone-950 border border-white/10 p-2.5 rounded text-white" />
+                            <input type="number" required value={newPlanPrice} onChange={(e) => setNewPlanPrice(Number(e.target.value))} placeholder="Valor Mensal (R$)" className="w-full bg-stone-950 border border-white/10 p-2.5 rounded text-white" />
+                            <input type="text" value={newPlanFeatures} onChange={(e) => setNewPlanFeatures(e.target.value)} placeholder="Benefícios inclusos separados por vírgula" className="w-full bg-stone-950 border border-white/10 p-2.5 rounded text-white" />
+                            <button type="submit" className="bg-brand-red text-white font-mono text-xs uppercase px-5 py-2.5 rounded font-bold">Salvar Plano</button>
+                          </form>
+                        </div>
+
+                        <div className="bg-stone-900 border border-white/10 p-4 rounded space-y-3">
+                          <h6 className="font-mono text-[10px] text-zinc-400 uppercase font-bold">Planos Cadastrados:</h6>
+                          <div className="space-y-2">
+                            {plansList.map((p) => (
+                              <div key={p.id} className="bg-stone-950 p-3 rounded border border-white/5 flex items-center justify-between text-xs">
+                                <div>
+                                  <strong className="text-white block">{p.name}</strong>
+                                  <span className="text-[10px] text-zinc-500 font-mono block">R$ {p.price}/mês</span>
+                                </div>
+                                <button onClick={() => handleDeletePlan(p.id)} className="text-red-400 hover:text-red-300 p-1">
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ADMIN: SIMULATOR & HARDWARE ASSETS MANAGEMENT */}
+                    {activeTab === "admin-simulator" && (
+                      <div className="space-y-6">
+                        <div className="bg-stone-900 border border-white/10 p-6 rounded space-y-4">
+                          <h5 className="font-display font-bold text-xs uppercase tracking-widest text-amber-400 flex items-center gap-2">
+                            <Camera size={16} /> Cadastro e Controle de Ativos (Adicionais de Hardware / Equipamentos)
+                          </h5>
+                          <p className="text-zinc-400 text-xs font-sans">
+                            Cadastre tochas, câmeras, lentes e girafas que entram como adicionais no simulador de locação.
+                          </p>
+
+                          {assetSaveMsg && <div className="text-emerald-400 font-mono text-xs">{assetSaveMsg}</div>}
+
+                          <form onSubmit={handleAddEquipment} className="space-y-3 text-xs">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <input type="text" required value={newEquipName} onChange={(e) => setNewEquipName(e.target.value)} placeholder="Nome do Ativo (ex: Kit Tocha Godox SK 400)" className="bg-stone-950 border border-white/10 p-2.5 rounded text-white" />
+                              <select value={newEquipCategory} onChange={(e: any) => setNewEquipCategory(e.target.value)} className="bg-stone-950 border border-white/10 p-2.5 rounded text-white">
+                                <option value="lighting">Iluminação & LEDs</option>
+                                <option value="camera">Câmeras & Lentes</option>
+                                <option value="grip">Maquinaria / Tripés</option>
+                                <option value="scenery">Cenário & Mobília</option>
+                              </select>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <input type="number" required value={newEquipPrice} onChange={(e) => setNewEquipPrice(Number(e.target.value))} placeholder="Valor do Adicional (R$)" className="bg-stone-950 border border-white/10 p-2.5 rounded text-white" />
+                              <input type="text" value={newEquipDesc} onChange={(e) => setNewEquipDesc(e.target.value)} placeholder="Descrição resumida do item" className="bg-stone-950 border border-white/10 p-2.5 rounded text-white" />
+                            </div>
+
+                            <button type="submit" className="bg-amber-500 hover:bg-amber-600 text-black font-mono text-xs uppercase px-5 py-2.5 rounded font-bold cursor-pointer">
+                              Cadastrar Novo Ativo no Simulador
+                            </button>
+                          </form>
+                        </div>
+
+                        {/* List of Assets with Availability Toggle */}
+                        <div className="bg-stone-900 border border-white/10 p-4 rounded space-y-3">
+                          <h6 className="font-mono text-[10px] text-zinc-400 uppercase font-bold">Ativos Disponíveis no Simulador:</h6>
+                          <div className="space-y-2">
+                            {equipments.map((eq) => (
+                              <div key={eq.id} className="bg-stone-950 p-3 rounded border border-white/5 flex items-center justify-between text-xs">
+                                <div>
+                                  <strong className="text-white block">{eq.name}</strong>
+                                  <span className="text-[10px] text-zinc-500 font-mono block">R$ {eq.price},00 • Categoria: {eq.category}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => toggleEquipmentAvailability(eq.id)}
+                                    className={cn(
+                                      "px-2.5 py-1 rounded text-[9px] font-mono uppercase font-bold border transition-all cursor-pointer",
+                                      eq.isAvailable ? "bg-emerald-950 text-emerald-400 border-emerald-500/30" : "bg-red-950 text-red-400 border-red-500/30"
+                                    )}
+                                  >
+                                    {eq.isAvailable ? "DISPONÍVEL" : "MANUTENÇÃO"}
+                                  </button>
+                                  <button onClick={() => handleDeleteEquipment(eq.id)} className="text-red-400 p-1">
+                                    <Trash2 size={16} />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ADMIN: TESTIMONIALS MODERATION */}
+                    {activeTab === "admin-testimonials" && (
+                      <div className="bg-stone-900 border border-white/10 p-6 rounded space-y-4">
+                        <h5 className="font-display font-bold text-xs uppercase tracking-widest text-[#d93838]">Moderação dos Depoimentos do Site</h5>
+                        <div className="space-y-3">
+                          {testimonialsList.map((t) => (
+                            <div key={t.id} className="bg-stone-950 p-4 rounded border border-white/5 flex justify-between items-start text-xs">
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-1 text-amber-400">
+                                  {[...Array(t.rating || 5)].map((_, i) => <Star key={i} size={12} className="fill-amber-400" />)}
+                                </div>
+                                <p className="text-zinc-200 italic">"{t.quote}"</p>
+                                <span className="text-zinc-500 font-mono text-[10px] block">— {t.name} ({t.role})</span>
+                              </div>
+                              <button onClick={async () => await deleteDoc(doc(db, "testimonials", t.id))} className="text-red-400 p-1">
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ADMIN: CHAT & MESSAGES */}
+                    {activeTab === "admin-chat" && (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-[480px]">
+                        <div className="bg-stone-900 border border-white/10 p-3 rounded overflow-y-auto space-y-2">
+                          <span className="font-mono text-[9px] text-zinc-500 uppercase block mb-2">Clientes e Fotógrafos:</span>
+                          {adminMessagesUsers.map((u) => (
+                            <button
+                              key={u.uid}
+                              onClick={() => { setAdminSelectedUserId(u.uid); setAdminSelectedUserName(u.name || u.email); }}
+                              className={cn(
+                                "w-full p-2.5 rounded text-left transition-all cursor-pointer block border",
+                                adminSelectedUserId === u.uid ? "bg-brand-red text-white border-brand-red" : "bg-stone-950 text-zinc-300 border-white/5 hover:border-white/20"
+                              )}
+                            >
+                              <span className="font-bold text-xs block">{u.name || "Fotógrafo"}</span>
+                              <span className="text-[9px] opacity-70 font-mono block">{u.email}</span>
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="md:col-span-2 bg-stone-900 border border-white/10 p-4 rounded flex flex-col">
                           {adminSelectedUserId ? (
                             <>
-                              <div className="border-b border-white/5 pb-2 mb-3 flex items-center justify-between">
-                                <span className="text-[10px] font-mono text-[#d93838] uppercase font-bold">Chat: {adminSelectedUserName}</span>
-                                <span className="text-[8px] font-mono text-zinc-500 uppercase">ID: {adminSelectedUserId.slice(0, 8)}</span>
-                              </div>
-
-                              {/* Message bubble logging */}
-                              <div className="flex-1 overflow-y-auto space-y-3 p-2 border border-white/5 rounded-sm bg-stone-950 mb-3 h-48 min-h-0">
-                                {adminChatMessages.length === 0 ? (
-                                  <div className="text-center py-12 text-zinc-600 text-[10px] font-mono">
-                                    Nenhuma mensagem trocada ainda. Envie uma resposta.
+                              <h6 className="font-bold text-xs text-white border-b border-white/5 pb-2 mb-3">Conversa com {adminSelectedUserName}</h6>
+                              <div className="flex-1 overflow-y-auto space-y-2 p-2 bg-stone-950 rounded border border-white/5">
+                                {adminChatMessages.map((m) => (
+                                  <div key={m.id} className={cn("max-w-[80%] p-3 rounded text-xs leading-relaxed", m.senderId === "admin" ? "bg-brand-red text-white ml-auto" : "bg-stone-800 text-zinc-200")}>
+                                    <p>{m.text}</p>
+                                    <span className="text-[8px] opacity-60 font-mono block text-right mt-1">{new Date(m.createdAt).toLocaleTimeString("pt-BR")}</span>
                                   </div>
-                                ) : (
-                                  adminChatMessages.map((msg) => {
-                                    const isMe = msg.senderId === "admin";
-                                    return (
-                                      <div key={msg.id} className={cn("flex flex-col", isMe ? "items-end" : "items-start")}>
-                                        <div className={cn(
-                                          "p-2.5 rounded-md text-[11px] max-w-[160px] sm:max-w-xs",
-                                          isMe ? "bg-[#d93838] text-white" : "bg-zinc-800 text-zinc-200"
-                                        )}>
-                                          <span className="block text-[8px] font-mono text-white/40 uppercase mb-1 font-bold">
-                                            {isMe ? "Administrador" : msg.senderName}
-                                          </span>
-                                          {msg.text}
-                                        </div>
-                                      </div>
-                                    );
-                                  })
-                                )}
+                                ))}
                                 <div ref={adminChatEndRef} />
                               </div>
-
-                              <form onSubmit={handleAdminSendMessage} className="flex gap-2">
-                                <input
-                                  type="text"
-                                  value={adminNewMsg}
-                                  onChange={(e) => setAdminNewMsg(e.target.value)}
-                                  placeholder="Escreva a resposta..."
-                                  className="flex-1 bg-stone-900 border border-white/5 rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-brand-red"
-                                />
-                                <button
-                                  type="submit"
-                                  className="bg-[#d93838] hover:bg-red-700 text-white p-2 rounded transition-all shrink-0 cursor-pointer"
-                                >
-                                  <Send size={12} />
-                                </button>
+                              <form onSubmit={async (e) => {
+                                e.preventDefault();
+                                if (!adminNewMsg.trim()) return;
+                                await addDoc(collection(db, "messages"), cleanFirestoreData({
+                                  id: "msg-" + Date.now(),
+                                  senderId: "admin",
+                                  senderName: "Atendimento Triângulo",
+                                  recipientId: adminSelectedUserId,
+                                  text: adminNewMsg,
+                                  createdAt: new Date().toISOString()
+                                }));
+                                setAdminNewMsg("");
+                              }} className="flex gap-2 mt-3">
+                                <input type="text" value={adminNewMsg} onChange={(e) => setAdminNewMsg(e.target.value)} placeholder="Responder ao cliente..." className="flex-1 bg-stone-950 border border-white/10 px-3 py-2 rounded text-xs text-white" />
+                                <button type="submit" className="bg-brand-red text-white font-mono text-xs px-4 rounded font-bold">Enviar</button>
                               </form>
                             </>
                           ) : (
-                            <div className="flex-1 flex items-center justify-center text-center text-zinc-600 text-[11px] font-mono uppercase">
-                              Selecione um cliente na barra lateral para abrir a conversa de suporte
-                            </div>
+                            <div className="my-auto text-center text-zinc-600 font-mono text-xs">Selecione um cliente ao lado para iniciar o atendimento.</div>
                           )}
                         </div>
                       </div>
                     )}
 
-                    {/* ADMIN: LOGS & TELEMETRY TAB */}
+                    {/* ADMIN: AUDIT LOGS & WEB VITALS TELEMETRY */}
                     {activeTab === "admin-logs" && (
-                      <div className="space-y-6">
-                        {/* Subtabs selector */}
-                        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-b border-white/5 pb-4">
-                          <div>
-                            <h5 className="font-display font-bold text-xs uppercase tracking-widest text-[#d93838] flex items-center gap-2">
-                              <ShieldAlert size={14} /> Telemetria, Segurança & Engajamento
-                            </h5>
-                            <p className="text-[10px] text-zinc-500 font-mono mt-0.5">Auditoria de segurança, registros de invasões e inteligência de comportamento do usuário</p>
-                          </div>
-
-                          <div className="flex gap-1 bg-stone-950 p-1 rounded border border-white/5 font-mono text-[10px]">
-                            <button
-                              onClick={() => setAdminLogsSubTab("security")}
-                              className={cn(
-                                "px-3 py-1 rounded transition-all font-bold uppercase flex items-center gap-1.5 cursor-pointer",
-                                adminLogsSubTab === "security" ? "bg-[#d93838] text-white" : "text-zinc-400 hover:text-white"
-                              )}
-                            >
-                              <Lock size={12} /> Segurança ({securityLogs.length})
-                            </button>
-                            <button
-                              onClick={() => setAdminLogsSubTab("activity")}
-                              className={cn(
-                                "px-3 py-1 rounded transition-all font-bold uppercase flex items-center gap-1.5 cursor-pointer",
-                                adminLogsSubTab === "activity" ? "bg-[#d93838] text-white" : "text-zinc-400 hover:text-white"
-                              )}
-                            >
-                              <Activity size={12} /> Atividades ({activityLogs.length})
-                            </button>
-                            <button
-                              onClick={() => setAdminLogsSubTab("behavior")}
-                              className={cn(
-                                "px-3 py-1 rounded transition-all font-bold uppercase flex items-center gap-1.5 cursor-pointer",
-                                adminLogsSubTab === "behavior" ? "bg-[#d93838] text-[#ffffff]" : "text-zinc-400 hover:text-white"
-                              )}
-                            >
-                              <MousePointer size={12} /> Engajamento ({behaviorLogs.length})
-                            </button>
-                            <button
-                              onClick={() => setAdminLogsSubTab("vitals")}
-                              className={cn(
-                                "px-3 py-1 rounded transition-all font-bold uppercase flex items-center gap-1.5 cursor-pointer",
-                                adminLogsSubTab === "vitals" ? "bg-[#d93838] text-white" : "text-zinc-400 hover:text-white"
-                              )}
-                            >
-                              <Gauge size={12} /> Web Vitals ({vitalsLogs.length})
-                            </button>
-                          </div>
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                          <h5 className="font-display font-bold text-xs uppercase tracking-widest text-red-400 flex items-center gap-2">
+                            <ShieldAlert size={16} /> Logs de Segurança, Auditoria e Web Vitals
+                          </h5>
+                          <button
+                            onClick={triggerManualBackup}
+                            disabled={backupLoading}
+                            className="bg-stone-900 border border-white/10 hover:border-emerald-500/30 text-emerald-400 font-mono text-[10px] uppercase px-3 py-1.5 rounded flex items-center gap-1.5 transition-all cursor-pointer"
+                          >
+                            <Download size={13} /> {backupLoading ? "Exportando..." : "Exportar Backup JSON"}
+                          </button>
                         </div>
 
-                        {/* AUTOMATED BACKUP & AUDIT EXPORT CARD */}
-                        <div className="bg-stone-900 border border border-[#d93838]/20 p-4 rounded-sm space-y-3">
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                            <div className="space-y-1">
-                              <h6 className="font-mono text-[10px] text-[#d93838] uppercase font-bold tracking-widest flex items-center gap-1.5">
-                                <Database size={14} /> Preservação de Dados & Backup Automático de Segurança
-                              </h6>
-                              <p className="text-[10px] text-zinc-400 font-sans">
-                                O sistema gera instantâneos periódicos em JSON de todas as coleções de auditoria (`security_logs`, `activity_logs`, `behavior_logs`).
-                              </p>
-                            </div>
+                        {backupMsg && <div className="text-xs font-mono text-emerald-400 bg-emerald-950/40 p-2.5 rounded border border-emerald-500/20">{backupMsg}</div>}
 
-                            <div className="flex items-center gap-2 shrink-0">
-                              <span className="bg-emerald-950 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded font-mono text-[9px] font-bold uppercase flex items-center gap-1">
-                                <Check size={12} /> Auto-Backup Agendado (6h)
-                              </span>
-                              <button
-                                onClick={triggerManualBackup}
-                                disabled={backupLoading}
-                                className="bg-[#d93838] hover:bg-neutral-800 text-white hover:text-[#d93838] px-3 py-1.5 rounded font-mono text-[10px] font-bold uppercase transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                              >
-                                {backupLoading ? <RefreshCw size={12} className="animate-spin" /> : <HardDrive size={12} />}
-                                {backupLoading ? "Gerando..." : "Gerar Backup JSON Agora"}
-                              </button>
-                            </div>
-                          </div>
-
-                          {backupMsg && (
-                            <div className="bg-stone-950 p-2.5 rounded border border-white/10 font-mono text-[11px] text-zinc-300">
-                              {backupMsg}
-                            </div>
-                          )}
-
-                          {/* Historical backup file list */}
-                          {backupFiles.length > 0 && (
-                            <div className="pt-2 border-t border-white/5 space-y-2">
-                              <span className="font-mono text-[9px] text-zinc-400 uppercase font-bold tracking-widest block">
-                                📁 Arquivos de Backup Salvos no Servidor ({backupFiles.length}):
-                              </span>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                {backupFiles.slice(0, 4).map((file, i) => (
-                                  <div key={i} className="bg-stone-950 p-2 rounded border border-white/5 flex items-center justify-between text-xs font-mono">
-                                    <div className="space-y-0.5 truncate">
-                                      <span className="text-zinc-200 font-semibold block text-[11px] truncate">{file.filename}</span>
-                                      <span className="text-[9px] text-zinc-500">{new Date(file.createdAt).toLocaleString("pt-BR")} • {file.sizeKb}</span>
-                                    </div>
-                                    <a
-                                      href={`/api/admin/download-backup/${file.filename}`}
-                                      download
-                                      className="bg-white/5 hover:bg-[#d93838] text-zinc-300 hover:text-white p-1.5 rounded transition-all ml-2 shrink-0 flex items-center gap-1 text-[9px] font-bold uppercase"
-                                      title="Baixar JSON"
-                                    >
-                                      <Download size={12} /> JSON
-                                    </a>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
+                        <div className="flex bg-stone-900 p-1 rounded border border-white/5 text-[10px] font-mono uppercase">
+                          {(["security", "activity", "behavior", "vitals"] as const).map((st) => (
+                            <button
+                              key={st}
+                              onClick={() => setAdminLogsSubTab(st)}
+                              className={cn(
+                                "flex-1 py-1.5 rounded text-center font-bold transition-all cursor-pointer",
+                                adminLogsSubTab === st ? "bg-brand-red text-white" : "text-zinc-400 hover:text-white"
+                              )}
+                            >
+                              {st === "security" ? "Segurança" : st === "activity" ? "Atividades" : st === "behavior" ? "Cliques" : "Web Vitals"}
+                            </button>
+                          ))}
                         </div>
 
-                        {/* SUBTAB 1: SECURITY & INTRUSION ATTEMPTS */}
-                        {adminLogsSubTab === "security" && (
-                          <div className="space-y-4">
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                              <div className="bg-stone-900 border border-white/5 p-3 rounded-sm">
-                                <span className="font-mono text-[9px] uppercase text-zinc-500 block font-bold">Total de Tentativas Incorretas</span>
-                                <span className="text-xl font-bold font-mono text-white mt-1 block">
-                                  {securityLogs.filter(l => l.type === "failed_login").length}
-                                </span>
+                        <div className="bg-stone-900 border border-white/10 p-4 rounded max-h-96 overflow-y-auto space-y-2">
+                          {adminLogsSubTab === "security" && securityLogs.map((log, idx) => (
+                            <div key={log.id || idx} className="bg-stone-950 p-2.5 rounded border border-white/5 text-xs font-mono flex justify-between items-start">
+                              <div>
+                                <strong className="text-red-400 uppercase font-bold block">{log.eventType} [{log.severity}]</strong>
+                                <p className="text-zinc-300 mt-0.5">{log.details}</p>
                               </div>
-                              <div className="bg-stone-900 border border-white/5 p-3 rounded-sm">
-                                <span className="font-mono text-[9px] uppercase text-zinc-500 block font-bold">Bloqueios por Rate Limit</span>
-                                <span className="text-xl font-bold font-mono text-[#d93838] mt-1 block">
-                                  {securityLogs.filter(l => l.type === "rate_limit_exceeded").length}
-                                </span>
+                              <span className="text-[9px] text-zinc-500">{new Date(log.timestamp).toLocaleTimeString("pt-BR")}</span>
+                            </div>
+                          ))}
+
+                          {adminLogsSubTab === "activity" && activityLogs.map((log, idx) => (
+                            <div key={log.id || idx} className="bg-stone-950 p-2.5 rounded border border-white/5 text-xs font-mono flex justify-between items-start">
+                              <div>
+                                <strong className="text-emerald-400 uppercase font-bold block">{log.actionType}</strong>
+                                <p className="text-zinc-300 mt-0.5">{log.details}</p>
                               </div>
-                              <div className="bg-stone-900 border border-white/5 p-3 rounded-sm">
-                                <span className="font-mono text-[9px] uppercase text-zinc-500 block font-bold">Status do Escudo Anti-Ataques</span>
-                                <span className="text-xs font-bold font-mono text-emerald-400 mt-2 block flex items-center gap-1.5">
-                                  <Check size={14} /> Proteção Ativa (Firestore Rules + Rate Limit)
-                                </span>
+                              <span className="text-[9px] text-zinc-500">{new Date(log.timestamp).toLocaleTimeString("pt-BR")}</span>
+                            </div>
+                          ))}
+
+                          {adminLogsSubTab === "vitals" && vitalsLogs.map((log, idx) => (
+                            <div key={log.id || idx} className="bg-stone-950 p-2.5 rounded border border-white/5 text-xs font-mono flex justify-between items-center">
+                              <div>
+                                <span className="text-white font-bold">{log.metricName}: </span>
+                                <strong className="text-emerald-400">{log.value}{log.unit}</strong>
                               </div>
+                              <span className="text-[9px] text-zinc-500">{new Date(log.timestamp).toLocaleTimeString("pt-BR")}</span>
                             </div>
-
-                            <div className="bg-stone-900 border border-white/5 rounded-sm p-4 space-y-3">
-                              <h6 className="font-mono text-[10px] text-zinc-400 uppercase font-bold tracking-widest">Feed em Tempo Real de Tentativas de Acesso Suspeitas</h6>
-                              
-                              {securityLogs.length === 0 ? (
-                                <div className="text-center py-8 text-zinc-600 font-mono text-xs">
-                                  Nenhuma tentativa suspeita ou falha de login registrada.
-                                </div>
-                              ) : (
-                                <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
-                                  {securityLogs.map((log, idx) => (
-                                    <div key={log.id || idx} className="bg-stone-950 p-3 rounded border border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs font-mono">
-                                      <div className="space-y-1">
-                                        <div className="flex items-center gap-2">
-                                          <span className={cn(
-                                            "text-[9px] px-2 py-0.5 rounded font-bold uppercase",
-                                            log.severity === "high" || log.severity === "critical" 
-                                              ? "bg-red-950 text-red-400 border border-red-500/20" 
-                                              : "bg-amber-950 text-amber-400 border border-amber-500/20"
-                                          )}>
-                                            {log.type}
-                                          </span>
-                                          <span className="text-zinc-400 text-[11px] font-semibold">{log.details}</span>
-                                        </div>
-                                        {log.userEmail && (
-                                          <p className="text-[10px] text-zinc-500">Alvo: <span className="text-zinc-300">{log.userEmail}</span></p>
-                                        )}
-                                      </div>
-                                      <div className="text-right shrink-0">
-                                        <span className="text-[9px] text-zinc-600 block">{new Date(log.timestamp).toLocaleString("pt-BR")}</span>
-                                        <span className="text-[8px] text-zinc-600 truncate max-w-[150px] block font-mono">{log.userAgent?.slice(0, 30)}...</span>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* SUBTAB 2: SYSTEM ACTIVITY AUDIT LOG */}
-                        {adminLogsSubTab === "activity" && (
-                          <div className="bg-stone-900 border border-white/5 rounded-sm p-4 space-y-3">
-                            <h6 className="font-mono text-[10px] text-zinc-400 uppercase font-bold tracking-widest">Histórico Auditável de Ações no Sistema</h6>
-                            
-                            {activityLogs.length === 0 ? (
-                              <div className="text-center py-8 text-zinc-600 font-mono text-xs">
-                                Nenhum evento de atividade registrado até o momento.
-                              </div>
-                            ) : (
-                              <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
-                                {activityLogs.map((log, idx) => (
-                                  <div key={log.id || idx} className="bg-stone-950 p-3 rounded border border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs font-mono">
-                                    <div className="space-y-0.5">
-                                      <div className="flex items-center gap-2">
-                                        <span className="bg-zinc-800 text-zinc-300 text-[9px] px-2 py-0.5 rounded font-bold uppercase">
-                                          {log.action}
-                                        </span>
-                                        <span className="text-white font-medium">{log.details}</span>
-                                      </div>
-                                      <p className="text-[10px] text-zinc-500">Executado por: <span className="text-brand-red font-bold">{log.performedBy}</span></p>
-                                    </div>
-                                    <span className="text-[9px] text-zinc-600 shrink-0 font-mono">
-                                      {new Date(log.timestamp).toLocaleString("pt-BR")}
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {/* SUBTAB 3: USER ENGAGEMENT & CLICK HEATMAP ANALYTICS */}
-                        {adminLogsSubTab === "behavior" && (
-                          <div className="space-y-4">
-                            {/* Analytics Summary */}
-                            <div className="bg-stone-900 border border-white/5 p-4 rounded-sm space-y-4">
-                              <h6 className="font-mono text-[10px] text-[#d93838] uppercase font-bold tracking-widest flex items-center gap-1.5">
-                                <BarChart2 size={14} /> Relatório de Engajamento e Interações
-                              </h6>
-                              
-                              {/* Calculate Ranking of Most Clicked Elements */}
-                              {(() => {
-                                const counts: Record<string, number> = {};
-                                behaviorLogs.forEach(b => {
-                                  const key = b.elementText ? `"${b.elementText}" (${b.sectionName})` : `#${b.elementId}`;
-                                  counts[key] = (counts[key] || 0) + 1;
-                                });
-                                const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 6);
-
-                                return (
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {/* Most Clicked Controls */}
-                                    <div className="bg-stone-950 p-3 rounded border border-white/5 space-y-2">
-                                      <span className="font-mono text-[9px] uppercase tracking-widest text-zinc-400 block font-bold">🔥 Top Elementos Mais Clicados (Maior Engajamento)</span>
-                                      {sorted.length === 0 ? (
-                                        <p className="text-zinc-600 text-[10px] font-mono py-2">Nenhum clique registrado ainda. Navegue no site para testar a captura.</p>
-                                      ) : (
-                                        <div className="space-y-1.5">
-                                          {sorted.map(([label, count], i) => (
-                                            <div key={i} className="flex items-center justify-between text-xs font-mono bg-stone-900 p-2 rounded">
-                                              <span className="text-zinc-300 truncate font-semibold max-w-[200px]">{i + 1}. {label}</span>
-                                              <span className="text-[#d93838] font-bold bg-red-950/40 px-2 py-0.5 rounded border border-red-500/20">{count} cliques</span>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </div>
-
-                                    {/* Section Distribution */}
-                                    <div className="bg-stone-950 p-3 rounded border border-white/5 space-y-2">
-                                      <span className="font-mono text-[9px] uppercase tracking-widest text-zinc-400 block font-bold">📍 Distribuição de Cliques por Seção</span>
-                                      {(() => {
-                                        const secCounts: Record<string, number> = {};
-                                        behaviorLogs.forEach(b => {
-                                          secCounts[b.sectionName] = (secCounts[b.sectionName] || 0) + 1;
-                                        });
-                                        const secSorted = Object.entries(secCounts).sort((a, b) => b[1] - a[1]);
-
-                                        return secSorted.length === 0 ? (
-                                          <p className="text-zinc-600 text-[10px] font-mono py-2">Sem dados de seção.</p>
-                                        ) : (
-                                          <div className="space-y-1.5">
-                                            {secSorted.map(([sec, count], i) => (
-                                              <div key={i} className="flex items-center justify-between text-xs font-mono bg-stone-900 p-2 rounded">
-                                                <span className="text-zinc-300 uppercase font-semibold">Seção #{sec}</span>
-                                                <span className="text-white font-bold bg-white/5 px-2 py-0.5 rounded">{count} ações</span>
-                                              </div>
-                                            ))}
-                                          </div>
-                                        );
-                                      })()}
-                                    </div>
-                                  </div>
-                                );
-                              })()}
-                            </div>
-
-                            {/* Raw Behavior Telemetry Feed */}
-                            <div className="bg-stone-900 border border-white/5 rounded-sm p-4 space-y-3">
-                              <h6 className="font-mono text-[10px] text-zinc-400 uppercase font-bold tracking-widest">Feed ao Vivo de Cliques e Comportamento dos Visitantes</h6>
-                              
-                              {behaviorLogs.length === 0 ? (
-                                <div className="text-center py-8 text-zinc-600 font-mono text-xs">
-                                  Aguardando interações dos usuários...
-                                </div>
-                              ) : (
-                                <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
-                                  {behaviorLogs.map((log, idx) => (
-                                    <div key={log.id || idx} className="bg-stone-950 p-2.5 rounded border border-white/5 flex items-center justify-between text-xs font-mono">
-                                      <div className="flex items-center gap-2">
-                                        <MousePointer size={12} className="text-[#d93838] shrink-0" />
-                                        <span className="text-white font-bold">{log.elementText || `#${log.elementId}`}</span>
-                                        <span className="text-zinc-500 text-[10px] bg-stone-900 px-1.5 py-0.5 rounded">Seção: {log.sectionName}</span>
-                                      </div>
-                                      <div className="text-right text-[9px] text-zinc-500 font-mono">
-                                        {new Date(log.timestamp).toLocaleTimeString("pt-BR")}
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* SUBTAB 4: WEB VITALS & SECTION PERFORMANCE MONITOR */}
-                        {adminLogsSubTab === "vitals" && (
-                          <div className="space-y-4">
-                            {/* Header Banner */}
-                            <div className="bg-stone-900 border border-emerald-500/30 p-4 rounded-sm space-y-2">
-                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                                <div>
-                                  <h6 className="font-mono text-[11px] text-emerald-400 font-bold uppercase tracking-widest flex items-center gap-1.5">
-                                    <Gauge size={14} /> Monitor de Desempenho & Web Vitals (São Paulo Centro)
-                                  </h6>
-                                  <p className="text-[10px] text-zinc-300 font-sans mt-0.5">
-                                    Métricas em tempo real de LCP, INP, FCP, TTFB e tempo de renderização por seções para conexões no centro de SP (Largo do Paissandu).
-                                  </p>
-                                </div>
-                                <span className="bg-emerald-950 text-emerald-400 border border-emerald-500/30 px-2.5 py-1 rounded font-mono text-[9px] font-bold uppercase shrink-0 self-start sm:self-auto flex items-center gap-1">
-                                  <Zap size={10} /> Experiência Fluida
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Core Web Vitals Key Indicator Cards */}
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                              {(() => {
-                                const getAvg = (mName: string) => {
-                                  const items = vitalsLogs.filter(v => v.metricName === mName);
-                                  if (items.length === 0) return null;
-                                  const sum = items.reduce((a, b) => a + b.value, 0);
-                                  return (sum / items.length).toFixed(1);
-                                };
-
-                                const lcpAvg = getAvg("LCP") || "850";
-                                const fcpAvg = getAvg("FCP") || "420";
-                                const ttfbAvg = getAvg("TTFB") || "110";
-                                const clsAvg = getAvg("CLS") || "0.01";
-
-                                return (
-                                  <>
-                                    <div className="bg-stone-950 p-3 rounded border border-white/10 space-y-1">
-                                      <span className="font-mono text-[9px] uppercase tracking-wider text-zinc-400 block font-bold">LCP (Maior Pintura)</span>
-                                      <div className="flex items-baseline justify-between">
-                                        <span className="text-xl font-bold font-mono text-emerald-400">{lcpAvg}ms</span>
-                                        <span className="text-[9px] font-mono font-bold bg-emerald-950 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/20">Ótimo</span>
-                                      </div>
-                                      <span className="text-[9px] text-zinc-500 block font-mono">Alvo: &lt; 2500ms</span>
-                                    </div>
-
-                                    <div className="bg-stone-950 p-3 rounded border border-white/10 space-y-1">
-                                      <span className="font-mono text-[9px] uppercase tracking-wider text-zinc-400 block font-bold">FCP (Primeira Pintura)</span>
-                                      <div className="flex items-baseline justify-between">
-                                        <span className="text-xl font-bold font-mono text-emerald-400">{fcpAvg}ms</span>
-                                        <span className="text-[9px] font-mono font-bold bg-emerald-950 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/20">Ótimo</span>
-                                      </div>
-                                      <span className="text-[9px] text-zinc-500 block font-mono">Alvo: &lt; 1800ms</span>
-                                    </div>
-
-                                    <div className="bg-stone-950 p-3 rounded border border-white/10 space-y-1">
-                                      <span className="font-mono text-[9px] uppercase tracking-wider text-zinc-400 block font-bold">TTFB (Primeiro Byte)</span>
-                                      <div className="flex items-baseline justify-between">
-                                        <span className="text-xl font-bold font-mono text-emerald-400">{ttfbAvg}ms</span>
-                                        <span className="text-[9px] font-mono font-bold bg-emerald-950 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/20">Ótimo</span>
-                                      </div>
-                                      <span className="text-[9px] text-zinc-500 block font-mono">Alvo: &lt; 800ms</span>
-                                    </div>
-
-                                    <div className="bg-stone-950 p-3 rounded border border-white/10 space-y-1">
-                                      <span className="font-mono text-[9px] uppercase tracking-wider text-zinc-400 block font-bold">CLS (Deslocamento)</span>
-                                      <div className="flex items-baseline justify-between">
-                                        <span className="text-xl font-bold font-mono text-emerald-400">{clsAvg}</span>
-                                        <span className="text-[9px] font-mono font-bold bg-emerald-950 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/20">Ótimo</span>
-                                      </div>
-                                      <span className="text-[9px] text-zinc-500 block font-mono">Alvo: &lt; 0.10</span>
-                                    </div>
-                                  </>
-                                );
-                              })()}
-                            </div>
-
-                            {/* Section Load Timing Breakdown */}
-                            <div className="bg-stone-900 border border-white/5 rounded-sm p-4 space-y-3">
-                              <h6 className="font-mono text-[10px] text-zinc-300 uppercase font-bold tracking-widest flex items-center gap-1.5">
-                                <Zap size={12} className="text-[#d93838]" /> Tempo de Carregamento por Seção do Site (SP Centro)
-                              </h6>
-
-                              {(() => {
-                                const sectionLogs = vitalsLogs.filter(v => v.metricName === "SECTION_LOAD");
-                                const sectionMap: Record<string, number[]> = {};
-                                sectionLogs.forEach(s => {
-                                  if (s.sectionName) {
-                                    if (!sectionMap[s.sectionName]) sectionMap[s.sectionName] = [];
-                                    sectionMap[s.sectionName].push(s.value);
-                                  }
-                                });
-
-                                // Fallback default section map if empty yet
-                                const sectionsToDisplay = Object.keys(sectionMap).length > 0
-                                  ? Object.entries(sectionMap).map(([name, vals]) => ({
-                                      name,
-                                      avg: Math.round(vals.reduce((a, b) => a + b, 0) / vals.length)
-                                    }))
-                                  : [
-                                      { name: "hero", avg: 310 },
-                                      { name: "conceito", avg: 480 },
-                                      { name: "espacos", avg: 620 },
-                                      { name: "planos", avg: 750 },
-                                      { name: "agendamento", avg: 890 },
-                                      { name: "rodape", avg: 1050 }
-                                    ];
-
-                                return (
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    {sectionsToDisplay.map((sec, idx) => (
-                                      <div key={idx} className="bg-stone-950 p-2.5 rounded border border-white/5 flex items-center justify-between text-xs font-mono">
-                                        <div className="space-y-0.5">
-                                          <span className="text-zinc-200 font-bold uppercase text-[11px] block">Seção #{sec.name}</span>
-                                          <span className="text-[9px] text-zinc-500">Renderização no viewport</span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                          <div className="w-24 bg-stone-900 rounded-full h-2 overflow-hidden hidden sm:block">
-                                            <div 
-                                              className="bg-emerald-500 h-full rounded-full" 
-                                              style={{ width: `${Math.min(100, (sec.avg / 1500) * 100)}%` }} 
-                                            />
-                                          </div>
-                                          <span className="text-emerald-400 font-bold text-[11px] bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-500/20">
-                                            {sec.avg}ms
-                                          </span>
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                );
-                              })()}
-                            </div>
-
-                            {/* Live Performance Feed */}
-                            <div className="bg-stone-900 border border-white/5 rounded-sm p-4 space-y-3">
-                              <h6 className="font-mono text-[10px] text-zinc-400 uppercase font-bold tracking-widest">Feed de Telemetria de Desempenho do Usuário</h6>
-
-                              {vitalsLogs.length === 0 ? (
-                                <div className="text-center py-8 text-zinc-600 font-mono text-xs">
-                                  Coletando métricas Web Vitals da sessão atual...
-                                </div>
-                              ) : (
-                                <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
-                                  {vitalsLogs.map((log, idx) => (
-                                    <div key={log.id || idx} className="bg-stone-950 p-2.5 rounded border border-white/5 flex items-center justify-between text-xs font-mono">
-                                      <div className="space-y-0.5">
-                                        <div className="flex items-center gap-2">
-                                          <span className="text-white font-bold uppercase text-[11px]">{log.metricName}</span>
-                                          <span className="text-emerald-400 font-bold">{log.value}{log.unit}</span>
-                                          {log.sectionName && (
-                                            <span className="text-zinc-500 text-[9px] bg-stone-900 px-1.5 py-0.5 rounded">
-                                              Seção: {log.sectionName}
-                                            </span>
-                                          )}
-                                        </div>
-                                        <div className="text-[9px] text-zinc-500">
-                                          📍 {log.locationTag || "São Paulo - Centro"} • Redes: {log.connectionType || "4G"}
-                                        </div>
-                                      </div>
-
-                                      <div className="text-right space-y-1 shrink-0">
-                                        <span className={cn(
-                                          "px-2 py-0.5 rounded text-[9px] font-bold uppercase border block text-center",
-                                          log.rating === "good" ? "bg-emerald-950 text-emerald-400 border-emerald-500/20" :
-                                          log.rating === "needs-improvement" ? "bg-amber-950 text-amber-400 border-amber-500/20" :
-                                          "bg-red-950 text-red-400 border-red-500/20"
-                                        )}>
-                                          {log.rating === "good" ? "Ótimo" : log.rating === "needs-improvement" ? "Atenção" : "Lento"}
-                                        </span>
-                                        <span className="text-[9px] text-zinc-600 block">
-                                          {new Date(log.timestamp).toLocaleTimeString("pt-BR")}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
+                          ))}
+                        </div>
                       </div>
                     )}
 

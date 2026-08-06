@@ -1,13 +1,65 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { X, CreditCard, RefreshCw } from "lucide-react";
+import { db, collection, onSnapshot } from "../lib/firebase";
+
+const DEFAULT_PLANS = [
+  {
+    id: "standard",
+    name: "Standard",
+    price: 400,
+    features: [
+      "12hrs locação",
+      "Segunda a Domingo das 9hrs às 22hrs",
+      "5% em Workshop",
+      "Fundo Colorido",
+      "Iluminação pra vídeo"
+    ]
+  },
+  {
+    id: "professional",
+    name: "Professional",
+    price: 600,
+    features: [
+      "18 hrs locação",
+      "20 hrs uso de escritório (Horário comercial)",
+      "10% em Workshop",
+      "Fundo Colorido",
+      "Iluminação pra video"
+    ]
+  },
+  {
+    id: "elite",
+    name: "Elite",
+    price: 800,
+    features: [
+      "22 Hrs. Locação",
+      "36hrs escritório (horário comercial)",
+      "20% em Workshops",
+      "Fundo colorido",
+      "Iluminação pra vídeo"
+    ]
+  }
+];
 
 export default function Pricing() {
+  const [plans, setPlans] = useState(DEFAULT_PLANS);
   const [selectedPlan, setSelectedPlan] = useState<{ id: string; name: string; price: number } | null>(null);
   const [cycle, setCycle] = useState<"3" | "6">("3");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "cowork_plans"), (snap) => {
+      if (!snap.empty) {
+        const list: any[] = [];
+        snap.forEach((doc) => list.push({ id: doc.id, ...doc.data() }));
+        if (list.length > 0) setPlans(list);
+      }
+    });
+    return () => unsub();
+  }, []);
 
   // Retrieve user details from localStorage if present
   React.useEffect(() => {
@@ -280,82 +332,33 @@ export default function Pricing() {
           </p>
         </div>
 
-        {/* 3 Cards Container */}
+        {/* Cards Container */}
         <div className="cards-grid">
-          {/* Card 1: Standard */}
-          <div className="pricing-card" id="pricing-card-standard">
-            <div className="card-header-block">
-              <div className="plan-name">Standard</div>
-              <div className="price-block">
-                <span className="currency">R$</span>
-                <span className="price-number">400</span>
-                <span className="period">/month</span>
+          {plans.map((p) => (
+            <div key={p.id} className="pricing-card" id={`pricing-card-${p.id}`}>
+              <div className="card-header-block">
+                <div className="plan-name">{p.name}</div>
+                <div className="price-block">
+                  <span className="currency">R$</span>
+                  <span className="price-number">{p.price}</span>
+                  <span className="period">/mês</span>
+                </div>
               </div>
+              <ul className="benefits-list">
+                {p.features?.map((feat, idx) => (
+                  <li key={idx} className="benefit-item">
+                    {feat}
+                  </li>
+                ))}
+              </ul>
+              <button 
+                className="enter-btn"
+                onClick={() => setSelectedPlan({ id: p.id, name: p.name, price: p.price })}
+              >
+                ENTRAR
+              </button>
             </div>
-            <ul className="benefits-list">
-              <li className="benefit-item">12hrs locação</li>
-              <li className="benefit-item">Segunda a Domingo das 9hrs às 22hrs</li>
-              <li className="benefit-item" style={{ color: "#dbd1d1" }}>5% em Workshop</li>
-              <li className="benefit-item">Fundo Colorido</li>
-              <li className="benefit-item">Iluminação pra vídeo</li>
-            </ul>
-            <button 
-              className="enter-btn"
-              onClick={() => setSelectedPlan({ id: "standard", name: "Standard", price: 400 })}
-            >
-              ENTRAR
-            </button>
-          </div>
-
-          {/* Card 2: Professional */}
-          <div className="pricing-card" id="pricing-card-professional">
-            <div className="card-header-block">
-              <div className="plan-name">Professional</div>
-              <div className="price-block">
-                <span className="currency">R$</span>
-                <span className="price-number">600</span>
-                <span className="period">/month</span>
-              </div>
-            </div>
-            <ul className="benefits-list">
-              <li className="benefit-item">18 hrs locação</li>
-              <li className="benefit-item">20 hrs uso de escritório (Horário comercial)</li>
-              <li className="benefit-item">10% em Workshop</li>
-              <li className="benefit-item">Fundo Colorido</li>
-              <li className="benefit-item">Iluminação pra video</li>
-            </ul>
-            <button 
-              className="enter-btn"
-              onClick={() => setSelectedPlan({ id: "professional", name: "Professional", price: 600 })}
-            >
-              ENTRAR
-            </button>
-          </div>
-
-          {/* Card 3: Elite */}
-          <div className="pricing-card" id="pricing-card-elite">
-            <div className="card-header-block">
-              <div className="plan-name">Elite</div>
-              <div className="price-block">
-                <span className="currency">R$</span>
-                <span className="price-number">800</span>
-                <span className="period">/month</span>
-              </div>
-            </div>
-            <ul className="benefits-list">
-              <li className="benefit-item">22 Hrs. Locação</li>
-              <li className="benefit-item">36hrs escritório (horário comercial)</li>
-              <li className="benefit-item">20% em Workshops</li>
-              <li className="benefit-item">Fundo colorido</li>
-              <li className="benefit-item">Iluminação pra vídeo</li>
-            </ul>
-            <button 
-              className="enter-btn"
-              onClick={() => setSelectedPlan({ id: "elite", name: "Elite", price: 800 })}
-            >
-              ENTRAR
-            </button>
-          </div>
+          ))}
         </div>
       </div>
 
