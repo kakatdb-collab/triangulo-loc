@@ -12,11 +12,14 @@ service cloud.firestore {
       return isLoggedIn() && request.auth.uid == userId;
     }
     
-    // Helper to check if the user is an admin
+    // Helper to check if the user is an admin by checking known admin email or role in user document
     function isAdmin() {
-      return isLoggedIn() && 
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin";
+      return isLoggedIn() && (
+        request.auth.token.email == "contato@triangulofotoclub.com.br" ||
+        request.auth.token.email == "kakatdb@gmail.com" ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin")
+      );
     }
 
     // Rules for Users collection
@@ -29,22 +32,50 @@ service cloud.firestore {
 
     // Rules for Bookings collection
     match /bookings/{bookingId} {
-      allow read: if isAdmin() || (isLoggedIn() && resource.data.userId == request.auth.uid) || (resource == null);
+      allow read: if true; // Allow reading bookings for dashboard and backups
       allow create: if true; // Allow simulations/bookings to be requested by guests as well
       allow update: if isAdmin() || (isLoggedIn() && resource.data.userId == request.auth.uid);
       allow delete: if isAdmin();
     }
 
-    // Rules for Settings collection
+    // Rules for Settings collection (Simulator & Prices)
     match /settings/{settingId} {
-      allow read: if true; // Anyone can read space values and optional equipment list
+      allow read: if true; // Anyone can read space values and equipment list
       allow write: if isAdmin();
     }
 
-    // Rules for Messages collection
+    // Rules for Messages collection (Chat)
     match /messages/{messageId} {
       allow read: if isLoggedIn();
       allow create: if isLoggedIn() && (request.resource.data.senderId == request.auth.uid || isAdmin());
+      allow update, delete: if isAdmin();
+    }
+
+    // Rules for Security Logs collection
+    match /security_logs/{logId} {
+      allow create: if true; // Allow client to write security alerts (e.g., failed logins)
+      allow read: if true; // Allow security log backup and admin reading
+      allow update, delete: if isAdmin();
+    }
+
+    // Rules for Activity Logs collection
+    match /activity_logs/{logId} {
+      allow create: if true;
+      allow read: if true; // Allow activity log backup and audit reading
+      allow update, delete: if isAdmin();
+    }
+
+    // Rules for Behavioral Click Analytics collection
+    match /behavior_logs/{logId} {
+      allow create: if true; // Allow background telemetry tracking
+      allow read: if true; // Allow behavior log backup and audit reading
+      allow update, delete: if isAdmin();
+    }
+
+    // Rules for Web Vitals & Performance Telemetry
+    match /vitals_logs/{vitalId} {
+      allow create: if true; // Allow client web vitals telemetry
+      allow read: if true; // Allow reading performance logs
       allow update, delete: if isAdmin();
     }
   }

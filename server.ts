@@ -5,6 +5,7 @@
 
 import express from "express";
 import path from "path";
+import fs from "fs";
 import nodemailer from "nodemailer";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
@@ -92,49 +93,139 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok", smtp_configured: !!process.env.SMTP_USER });
 });
 
+// Admin Backup & Audit Log Export API Endpoints
+app.get("/api/admin/trigger-backup", async (req, res) => {
+  try {
+    const { runLogsBackup } = await import("./scripts/export-logs-backup.js");
+    const result = await runLogsBackup();
+    return res.json({
+      success: true,
+      message: "Backup dos logs de segurança, atividades e comportamento realizado com sucesso!",
+      filepath: result.filepath,
+      exportedAt: result.backupData.exportedAt,
+      counts: result.backupData.counts,
+    });
+  } catch (err: any) {
+    console.error("Error running log backup via API:", err);
+    return res.status(500).json({ success: false, error: err.message || "Falha ao gerar backup" });
+  }
+});
+
+app.get("/api/admin/list-backups", (req, res) => {
+  try {
+    const backupDir = path.join(process.cwd(), "backups");
+    if (!fs.existsSync(backupDir)) {
+      return res.json({ backups: [] });
+    }
+    const files = fs.readdirSync(backupDir)
+      .filter(f => f.endsWith(".json"))
+      .map(filename => {
+        const filepath = path.join(backupDir, filename);
+        const stats = fs.statSync(filepath);
+        return {
+          filename,
+          sizeBytes: stats.size,
+          sizeKb: (stats.size / 1024).toFixed(1) + " KB",
+          createdAt: stats.mtime.toISOString(),
+        };
+      })
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    return res.json({ backups: files });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/admin/download-backup/:filename", (req, res) => {
+  try {
+    const filename = req.params.filename;
+    // Sanitize filename against directory traversal
+    const safeFilename = path.basename(filename);
+    const filepath = path.join(process.cwd(), "backups", safeFilename);
+
+    if (!fs.existsSync(filepath)) {
+      return res.status(404).send("Arquivo de backup não encontrado");
+    }
+
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader("Content-Disposition", `attachment; filename="${safeFilename}"`);
+    return res.sendFile(filepath);
+  } catch (err: any) {
+    return res.status(500).send("Erro ao transferir backup");
+  }
+});
+
 // Explicit routes for SEO & GEO engines
 app.get("/robots.txt", (req, res) => {
   res.type("text/plain");
+  const robotsPath = path.join(process.cwd(), "public", "robots.txt");
+  if (fs.existsSync(robotsPath)) {
+    return res.sendFile(robotsPath);
+  }
   res.send(`User-agent: *\nAllow: /\n\nSitemap: https://trianguloestudio.online/sitemap.xml\n`);
 });
 
 app.get("/sitemap.xml", (req, res) => {
   res.type("application/xml");
+  const sitemapPath = path.join(process.cwd(), "public", "sitemap.xml");
+  if (fs.existsSync(sitemapPath)) {
+    return res.sendFile(sitemapPath);
+  }
+
+  const today = new Date().toISOString().split("T")[0];
   res.send(`<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
   <url>
     <loc>https://trianguloestudio.online/</loc>
-    <lastmod>2026-08-05</lastmod>
+    <lastmod>${today}</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
+    <image:image>
+      <image:loc>https://triangulofotoclub.com.br/locacao/estudio/01-Escritorio.webp</image:loc>
+      <image:title>Estúdio Triângulo Fotoclub - Fundo Infinito e Escritório</image:title>
+    </image:image>
   </url>
   <url>
     <loc>https://trianguloestudio.online/#espacos</loc>
-    <lastmod>2026-08-05</lastmod>
+    <lastmod>${today}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
     <loc>https://trianguloestudio.online/#agendamento</loc>
-    <lastmod>2026-08-05</lastmod>
-    <changefreq>weekly</changefreq>
+    <lastmod>${today}</lastmod>
+    <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
     <loc>https://trianguloestudio.online/#planos</loc>
-    <lastmod>2026-08-05</lastmod>
+    <lastmod>${today}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://trianguloestudio.online/#portfolio</loc>
-    <lastmod>2026-08-05</lastmod>
+    <lastmod>${today}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://trianguloestudio.online/#equipamentos</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://trianguloestudio.online/#localizacao</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://trianguloestudio.online/#contato</loc>
-    <lastmod>2026-08-05</lastmod>
+    <lastmod>${today}</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -455,6 +546,26 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+
+    // Schedule automated periodic audit log backups (every 6 hours)
+    const SIX_HOURS = 6 * 60 * 60 * 1000;
+    setTimeout(async () => {
+      try {
+        const { runLogsBackup } = await import("./scripts/export-logs-backup.js");
+        await runLogsBackup();
+      } catch (err) {
+        console.warn("[AUTO BACKUP SCHEDULE] Initial snapshot deferred:", err);
+      }
+    }, 15000); // 15 seconds after boot
+
+    setInterval(async () => {
+      try {
+        const { runLogsBackup } = await import("./scripts/export-logs-backup.js");
+        await runLogsBackup();
+      } catch (err) {
+        console.warn("[AUTO BACKUP SCHEDULE] Periodic snapshot failed:", err);
+      }
+    }, SIX_HOURS);
   });
 }
 

@@ -24,7 +24,8 @@ import {
 import { jsPDF } from "jspdf";
 import { STUDIO_SPACES, EQUIPMENT_LIST } from "../data";
 import { StudioSpace, Equipment, Booking } from "../types";
-import { db, auth, doc, setDoc, onSnapshot, collection } from "../lib/firebase";
+import { db, auth, doc, setDoc, onSnapshot, collection, handleFirestoreError, OperationType } from "../lib/firebase";
+import { logActivityEvent } from "../lib/analytics";
 
 interface BookingSystemProps {
   selectedSpaceId: string;
@@ -51,6 +52,8 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
           setDbEquipments(data.equipments);
         }
       }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, "settings/simulator");
     });
     return () => unsub();
   }, []);
@@ -567,6 +570,13 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
       await setDoc(doc(db, "bookings", code), {
         ...newBooking
       });
+
+      // Log reservation creation activity event
+      logActivityEvent(
+        'booking_created', 
+        newBooking.clientEmail, 
+        `Reserva #${newBooking.id} criada para o espaço ${newBooking.spaceName} na data ${newBooking.date} (${newBooking.timeSlot}) - R$ ${newBooking.totalPrice}`
+      );
 
       // 3. Generate PDF client-side
       const pdfBase64 = generatePDFOfBooking(newBooking, true); // silent base64 generation

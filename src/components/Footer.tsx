@@ -4,6 +4,7 @@
  */
 
 import { Mail, Phone, MapPin, Clock, ArrowUp, Instagram, Youtube, Compass } from "lucide-react";
+import StudioMap from "./StudioMap";
 
 export default function Footer() {
   const handleScrollToTop = () => {
@@ -124,52 +125,13 @@ export default function Footer() {
             </ul>
           </div>
 
-          {/* Col 3: Elegant Live Google Map (4 cols) */}
+          {/* Col 3: Google Maps Platform Component (4 cols) */}
           <div className="lg:col-span-4 space-y-4">
             <h4 className="font-display font-bold text-sm tracking-widest text-[#d93838] uppercase border-b border-white/5 pb-2">
               Sede no Mapa
             </h4>
 
-            <div className="relative aspect-video lg:aspect-[4/3] bg-stone-950 rounded border border-white/5 overflow-hidden group shadow">
-              {/* Google Maps iFrame styled with a sleek dark custom appearance */}
-              <iframe
-                title="Triângulo Estúdio Fotoclub Localização"
-                src="https://maps.google.com/maps?q=Largo+do+Paissandu,+72+-+Centro+Historico+de+Sao+Paulo,+Sao+Paulo+-+SP,+01037-010&t=&z=16&ie=UTF8&iwloc=&output=embed"
-                width="100%"
-                height="100%"
-                style={{ border: 0 }}
-                allowFullScreen={false}
-                loading="lazy"
-                referrerPolicy="no-referrer-when-downgrade"
-                className="absolute inset-0 w-full h-full grayscale invert opacity-70 hover:opacity-90 contrast-[1.15] brightness-[0.85] transition-all duration-500 focus:outline-none"
-              />
-              
-              {/* Subtle decorative border overlay for high-end tech framing */}
-              <div className="absolute inset-0 pointer-events-none border border-white/5 group-hover:border-[#d93838]/20 transition-colors duration-500" />
-
-              {/* Location pin indicator pill on top of the iframe */}
-              <div className="absolute top-4 left-4 bg-stone-950/95 border border-[#d93838]/30 px-3 py-1.5 rounded flex items-center gap-2 pointer-events-none backdrop-blur-sm shadow z-10 transition-transform duration-300 group-hover:scale-105">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#d93838] opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-[#d93838]"></span>
-                </span>
-                <span className="text-white font-mono text-[9px] uppercase tracking-widest font-bold">
-                  Sede Triângulo
-                </span>
-              </div>
-
-              {/* Action button overlay at bottom right */}
-              <div className="absolute bottom-3 right-3 z-10">
-                <a 
-                  href="https://maps.google.com/?q=Largo+do+Paissandu,+72,+conj+1803,+Centro,+Sao+Paulo+-+SP" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="bg-[#d93838] hover:bg-neutral-800 text-white hover:text-[#d93838] font-mono text-[9px] px-2.5 py-1.5 rounded shadow-lg transition-all duration-300 uppercase font-bold tracking-wider inline-flex items-center gap-1 border border-[#d93838]/20"
-                >
-                  Ver no Maps
-                </a>
-              </div>
-            </div>
+            <StudioMap />
           </div>
 
         </div>

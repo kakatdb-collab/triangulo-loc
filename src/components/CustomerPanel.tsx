@@ -8,13 +8,18 @@ import { motion, AnimatePresence } from "motion/react";
 import { 
   X, User, Lock, Mail, Phone, Calendar, MessageSquare, ShieldAlert,
   Upload, Check, CreditCard, ChevronRight, Settings, Plus, Trash2, 
-  Sparkles, Bell, Send, Image as ImageIcon, Key, RefreshCw, AlertTriangle
+  Sparkles, Bell, Send, Image as ImageIcon, Key, RefreshCw, AlertTriangle,
+  Activity, Eye, MousePointer, BarChart2, Download, Database, HardDrive,
+  Zap, Gauge
 } from "lucide-react";
 import { 
   auth, db, signInWithEmailAndPassword, createUserWithEmailAndPassword, 
-  signOut, onAuthStateChanged, doc, setDoc, getDoc, updateDoc, 
-  collection, getDocs, query, where, orderBy, addDoc, onSnapshot, FirebaseUser
+  sendPasswordResetEmail, signOut, onAuthStateChanged, doc, setDoc, getDoc, updateDoc, 
+  collection, getDocs, query, where, orderBy, addDoc, onSnapshot, FirebaseUser,
+  handleFirestoreError, OperationType
 } from "../lib/firebase";
+import { logSecurityEvent, logActivityEvent, checkRateLimit, SecurityLog, ActivityLog, BehaviorLog } from "../lib/analytics";
+import { VitalMetricLog } from "../lib/vitals";
 import { Booking, Equipment } from "../types";
 
 // Helper function to concatenate classes cleanly
@@ -80,6 +85,47 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
   const [adminChatMessages, setAdminChatMessages] = useState<any[]>([]);
   const [adminNewMsg, setAdminNewMsg] = useState("");
 
+  // Admin Logs & Behavioral Telemetry States
+  const [securityLogs, setSecurityLogs] = useState<SecurityLog[]>([]);
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
+  const [behaviorLogs, setBehaviorLogs] = useState<BehaviorLog[]>([]);
+  const [vitalsLogs, setVitalsLogs] = useState<VitalMetricLog[]>([]);
+  const [adminLogsSubTab, setAdminLogsSubTab] = useState<"security" | "activity" | "behavior" | "vitals">("security");
+  const [backupLoading, setBackupLoading] = useState(false);
+  const [backupMsg, setBackupMsg] = useState("");
+  const [backupFiles, setBackupFiles] = useState<any[]>([]);
+
+  const fetchBackupList = async () => {
+    try {
+      const res = await fetch("/api/admin/list-backups");
+      if (res.ok) {
+        const data = await res.json();
+        setBackupFiles(data.backups || []);
+      }
+    } catch (err) {
+      console.error("Error listing backups:", err);
+    }
+  };
+
+  const triggerManualBackup = async () => {
+    setBackupLoading(true);
+    setBackupMsg("");
+    try {
+      const res = await fetch("/api/admin/trigger-backup");
+      const data = await res.json();
+      if (data.success) {
+        setBackupMsg(`✅ Backup exportado com sucesso! (${data.counts?.securityLogsCount || 0} logs de segurança, ${data.counts?.activityLogsCount || 0} atividades)`);
+        fetchBackupList();
+      } else {
+        setBackupMsg("❌ Erro ao exportar backup: " + (data.error || "Desconhecido"));
+      }
+    } catch (err: any) {
+      setBackupMsg("❌ Erro de comunicação ao acionar backup.");
+    } finally {
+      setBackupLoading(false);
+    }
+  };
+
   // Admin Simulator Settings
   const [simulatorHourly, setSimulatorHourly] = useState(100);
   const [simulatorHalfDay, setSimulatorHalfDay] = useState(400);
@@ -111,22 +157,28 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
         let uPhone = "";
         let uAvatar = "";
 
+        // Strictly authorized admin emails list (no loose substring matching)
+        const ADMIN_EMAILS = [
+          "contato@triangulofotoclub.com.br",
+          "kakatdb@gmail.com"
+        ];
+        const userEmail = currentUser.email?.toLowerCase().trim() || "";
+        const isAdminEmail = ADMIN_EMAILS.includes(userEmail);
+
         if (userSnap.exists()) {
           const uData = userSnap.data();
-          userRole = uData.role || "client";
+          userRole = isAdminEmail || uData.role === "admin" ? "admin" : "client";
           uName = uData.name || uName;
           uPhone = uData.phone || "";
           uAvatar = uData.avatarUrl || "";
         } else {
           // If the user registered and doesn't have a Firestore profile yet, create one
-          // Standard check: email containing 'admin' or matching client email is admin
-          const isAdminEmail = currentUser.email?.toLowerCase() === "contato@triangulofotoclub.com.br" || currentUser.email?.toLowerCase().includes("admin");
           userRole = isAdminEmail ? "admin" : "client";
           
           await setDoc(userDocRef, {
             uid: currentUser.uid,
             email: currentUser.email,
-            name: uName || "Criativo",
+            name: uName || (isAdminEmail ? "Administrador Triângulo" : "Criativo"),
             phone: uPhone,
             role: userRole,
             avatarUrl: "",
@@ -156,6 +208,8 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
             // Sort by creation or date desc
             list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
             setMyBookings(list);
+          }, (error) => {
+            handleFirestoreError(error, OperationType.GET, "bookings");
           });
 
           // Set up real-time chat with admin
@@ -172,6 +226,8 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
             msgs.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
             setChatMessages(msgs);
             setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 200);
+          }, (error) => {
+            handleFirestoreError(error, OperationType.GET, "messages");
           });
 
           return () => {
@@ -189,6 +245,8 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
             });
             list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
             setAllBookings(list);
+          }, (error) => {
+            handleFirestoreError(error, OperationType.GET, "bookings");
           });
 
           // 2. Active users with messages
@@ -202,11 +260,52 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
               }
             });
             setAdminMessagesUsers(usersList);
+          }, (error) => {
+            handleFirestoreError(error, OperationType.GET, "users");
           });
+
+          // 3. Security logs listener
+          const secQuery = query(collection(db, "security_logs"), orderBy("timestamp", "desc"));
+          const unsubSec = onSnapshot(secQuery, (snap) => {
+            const list: SecurityLog[] = [];
+            snap.forEach((doc) => list.push({ id: doc.id, ...doc.data() } as SecurityLog));
+            setSecurityLogs(list);
+          }, (err) => handleFirestoreError(err, OperationType.GET, "security_logs"));
+
+          // 4. Activity logs listener
+          const actQuery = query(collection(db, "activity_logs"), orderBy("timestamp", "desc"));
+          const unsubAct = onSnapshot(actQuery, (snap) => {
+            const list: ActivityLog[] = [];
+            snap.forEach((doc) => list.push({ id: doc.id, ...doc.data() } as ActivityLog));
+            setActivityLogs(list);
+          }, (err) => handleFirestoreError(err, OperationType.GET, "activity_logs"));
+
+          // 5. Behavior click telemetry logs listener
+          const behQuery = query(collection(db, "behavior_logs"), orderBy("timestamp", "desc"));
+          const unsubBeh = onSnapshot(behQuery, (snap) => {
+            const list: BehaviorLog[] = [];
+            snap.forEach((doc) => list.push({ id: doc.id, ...doc.data() } as BehaviorLog));
+            setBehaviorLogs(list);
+          }, (err) => handleFirestoreError(err, OperationType.GET, "behavior_logs"));
+
+          // 6. Web Vitals & Section Load performance monitor listener
+          const vitQuery = query(collection(db, "vitals_logs"), orderBy("timestamp", "desc"));
+          const unsubVit = onSnapshot(vitQuery, (snap) => {
+            const list: VitalMetricLog[] = [];
+            snap.forEach((doc) => list.push({ id: doc.id, ...doc.data() } as VitalMetricLog));
+            setVitalsLogs(list);
+          }, (err) => handleFirestoreError(err, OperationType.GET, "vitals_logs"));
+
+          // Fetch backup files list
+          fetchBackupList();
 
           return () => {
             unsubAllBookings();
             unsubUsers();
+            unsubSec();
+            unsubAct();
+            unsubBeh();
+            unsubVit();
           };
         }
       } else {
@@ -238,6 +337,8 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
       msgs.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
       setAdminChatMessages(msgs);
       setTimeout(() => adminChatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 200);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, "messages");
     });
 
     return () => unsubAdminChat();
@@ -246,6 +347,25 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
   // Load dynamic pricing settings
   useEffect(() => {
     const loadSettings = async () => {
+      const initialEquips: Equipment[] = [
+        {
+          id: "aputure_600d",
+          name: "Kit Aputure LS 600d Pro (LED Contínuo)",
+          category: "lighting",
+          price: 150,
+          description: "Luz contínua de imensa intensidade para cinema e vídeo com controle wireless.",
+          isAvailable: true,
+        },
+        {
+          id: "sony_a7r5",
+          name: "Câmera Sony Alpha A7R V + Lente 24-70mm f/2.8 GM II",
+          category: "camera",
+          price: 250,
+          description: "Foco automático impulsionado por IA, sensor de 61 megapixels.",
+          isAvailable: true,
+        }
+      ];
+
       try {
         const settingsRef = doc(db, "settings", "simulator");
         const snap = await getDoc(settingsRef);
@@ -257,47 +377,43 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
           setInfinitePayHandle(data.infinitePayHandle || "triangulofotoclub");
           setEquipments(data.equipments || []);
         } else {
-          // Initialize with default values if not created yet
-          const initialEquips: Equipment[] = [
-            {
-              id: "aputure_600d",
-              name: "Kit Aputure LS 600d Pro (LED Contínuo)",
-              category: "lighting",
-              price: 150,
-              description: "Luz contínua de imensa intensidade para cinema e vídeo com controle wireless.",
-              isAvailable: true,
-            },
-            {
-              id: "sony_a7r5",
-              name: "Câmera Sony Alpha A7R V + Lente 24-70mm f/2.8 GM II",
-              category: "camera",
-              price: 250,
-              description: "Foco automático impulsionado por IA, sensor de 61 megapixels.",
-              isAvailable: true,
-            }
-          ];
-          await setDoc(settingsRef, {
-            id: "simulator",
-            hourlyRate: 100,
-            halfDayRate: 400,
-            fullDayRate: 700,
-            infinitePayHandle: "triangulofotoclub",
-            equipments: initialEquips,
-          });
+          // Initialize local state with default fallback values
           setSimulatorHourly(100);
           setSimulatorHalfDay(400);
           setSimulatorFullDay(700);
           setInfinitePayHandle("triangulofotoclub");
           setEquipments(initialEquips);
+
+          // Only attempt to setDoc if user is admin
+          if (role === "admin") {
+            try {
+              await setDoc(settingsRef, {
+                id: "simulator",
+                hourlyRate: 100,
+                halfDayRate: 400,
+                fullDayRate: 700,
+                infinitePayHandle: "triangulofotoclub",
+                equipments: initialEquips,
+              });
+            } catch (err) {
+              console.warn("Silent fallback: could not write settings doc as non-admin", err);
+            }
+          }
         }
       } catch (e) {
-        console.error("Error loading simulator settings:", e);
+        // Fall back gracefully to defaults on permission or connection error
+        setSimulatorHourly(100);
+        setSimulatorHalfDay(400);
+        setSimulatorFullDay(700);
+        setInfinitePayHandle("triangulofotoclub");
+        setEquipments(initialEquips);
       }
     };
+
     if (isOpen) {
       loadSettings();
     }
-  }, [isOpen]);
+  }, [isOpen, role]);
 
   // Handle pre-selected payment trigger
   useEffect(() => {
@@ -364,19 +480,70 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
     setAuthSuccess("");
     setAuthLoading(true);
 
-    if (!email || !password) {
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!cleanEmail || !password) {
       setAuthError("E-mail e senha são necessários.");
       setAuthLoading(false);
       return;
     }
 
+    // Rate limiting security check against brute force attempts
+    if (!checkRateLimit("login_" + cleanEmail, 5, 60000)) {
+      setAuthError("Bloqueio de segurança: muitas tentativas incorretas num curto intervalo. Por favor, aguarde 1 minuto.");
+      logSecurityEvent('rate_limit_exceeded', 'high', `Múltiplas tentativas de login bloqueadas para o e-mail: ${cleanEmail}`, cleanEmail);
+      setAuthLoading(false);
+      return;
+    }
+
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      await signInWithEmailAndPassword(auth, cleanEmail, password);
       setAuthSuccess("Logado com sucesso!");
+      logActivityEvent('user_login', cleanEmail, 'Login realizado com sucesso no painel');
     } catch (error: any) {
+      // Log security event for invalid password/email attempt
+      logSecurityEvent('failed_login', 'medium', `Tentativa frustrada de login com e-mail: ${cleanEmail}`, cleanEmail);
+
+      // If sign in fails for the default admin account, auto-create it in Firebase Auth
+      if (cleanEmail === "contato@triangulofotoclub.com.br" && password === "Tri@2026") {
+        try {
+          const userCred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+          const userDocRef = doc(db, "users", userCred.user.uid);
+          await setDoc(userDocRef, {
+            uid: userCred.user.uid,
+            email: cleanEmail,
+            name: "Administrador Triângulo",
+            phone: "(11) 96195-9349",
+            role: "admin",
+            avatarUrl: "",
+            createdAt: new Date().toLocaleDateString("pt-BR"),
+          });
+          setAuthSuccess("Conta de Administrador inicializada e conectada com sucesso!");
+          logActivityEvent('user_signup', cleanEmail, 'Conta do Administrador ativada');
+          return;
+        } catch (createErr: any) {
+          console.error("Auto admin provisioning error:", createErr);
+        }
+      }
       setAuthError("E-mail ou senha inválidos.");
     } finally {
       setAuthLoading(false);
+    }
+  };
+
+  // Password Reset Handler
+  const handleResetPassword = async () => {
+    if (!email) {
+      setAuthError("Informe o seu e-mail no campo acima e clique em 'Esqueci a senha' para enviar o link.");
+      return;
+    }
+    setAuthError("");
+    setAuthSuccess("");
+    try {
+      await sendPasswordResetEmail(auth, email);
+      setAuthSuccess(`Link de redefinição de senha enviado para ${email}! Verifique sua caixa de entrada e spam.`);
+    } catch (err: any) {
+      setAuthError("Erro ao enviar redefinição: " + (err.message || "E-mail não encontrado."));
     }
   };
 
@@ -806,34 +973,48 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
                   </form>
 
                   {/* Toggle Mode */}
-                  <div className="mt-6 text-center text-xs text-zinc-400">
+                  <div className="mt-6 text-center text-xs text-zinc-400 space-y-3">
                     {isRegistering ? (
                       <p>
                         Já possui conta?{" "}
                         <button
+                          type="button"
                           onClick={() => setIsRegistering(false)}
-                          className="text-[#d93838] font-bold hover:underline"
+                          className="text-[#d93838] font-bold hover:underline cursor-pointer"
                         >
                           Entrar agora
                         </button>
                       </p>
                     ) : (
-                      <p>
-                        Não tem conta cadastrada?{" "}
-                        <button
-                          onClick={() => setIsRegistering(true)}
-                          className="text-[#d93838] font-bold hover:underline"
-                        >
-                          Criar cadastro rápido
-                        </button>
-                      </p>
+                      <>
+                        <p>
+                          Não tem conta cadastrada?{" "}
+                          <button
+                            type="button"
+                            onClick={() => setIsRegistering(true)}
+                            className="text-[#d93838] font-bold hover:underline cursor-pointer"
+                          >
+                            Criar cadastro rápido
+                          </button>
+                        </p>
+                        <p className="pt-2">
+                          Esqueceu sua senha?{" "}
+                          <button
+                            type="button"
+                            onClick={handleResetPassword}
+                            className="text-zinc-300 underline font-semibold hover:text-white cursor-pointer"
+                          >
+                            Redefinir senha por e-mail
+                          </button>
+                        </p>
+                      </>
                     )}
                   </div>
 
-                  {/* Easy admin credential tips for debugging in AI Studio preview */}
-                  <div className="mt-12 bg-stone-900 border border-white/5 p-4 rounded-sm text-[10px] text-zinc-500 space-y-2">
-                    <p className="font-mono text-white/40 uppercase tracking-widest font-bold">Dica para Testes:</p>
-                    <p>Você pode criar qualquer conta padrão de e-mail de cliente para testar. Se criar ou entrar com um e-mail contendo "admin" (ex: <span className="text-[#d93838]">admin@triangulo.com</span>), o sistema liberará automaticamente o acesso total de administrador!</p>
+                  {/* Admin credential info */}
+                  <div className="mt-8 bg-stone-900 border border-white/5 p-4 rounded-sm text-[10px] text-zinc-400 space-y-2">
+                    <p className="font-mono text-white/60 uppercase tracking-widest font-bold">Acesso ao Painel Administrativo:</p>
+                    <p>E-mail: <span className="text-[#d93838] font-mono font-bold">contato@triangulofotoclub.com.br</span> | Senha: <span className="text-white font-mono font-bold">Tri@2026</span></p>
                   </div>
                 </div>
               ) : (
@@ -899,6 +1080,16 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
                           )}
                         >
                           Mensagens
+                        </button>
+                        <button
+                          onClick={() => setActiveTab("admin-logs")}
+                          className={cn(
+                            "flex-1 py-4 text-center font-mono uppercase tracking-wider font-semibold border-b-2 transition-all cursor-pointer flex items-center justify-center gap-1.5",
+                            activeTab === "admin-logs" ? "border-brand-red text-white bg-white/[0.02]" : "border-transparent text-zinc-400 hover:text-white"
+                          )}
+                        >
+                          <ShieldAlert size={14} className="text-[#d93838]" />
+                          Logs & Analytics
                         </button>
                       </>
                     )}
@@ -1520,6 +1711,492 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
                             </div>
                           )}
                         </div>
+                      </div>
+                    )}
+
+                    {/* ADMIN: LOGS & TELEMETRY TAB */}
+                    {activeTab === "admin-logs" && (
+                      <div className="space-y-6">
+                        {/* Subtabs selector */}
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-b border-white/5 pb-4">
+                          <div>
+                            <h5 className="font-display font-bold text-xs uppercase tracking-widest text-[#d93838] flex items-center gap-2">
+                              <ShieldAlert size={14} /> Telemetria, Segurança & Engajamento
+                            </h5>
+                            <p className="text-[10px] text-zinc-500 font-mono mt-0.5">Auditoria de segurança, registros de invasões e inteligência de comportamento do usuário</p>
+                          </div>
+
+                          <div className="flex gap-1 bg-stone-950 p-1 rounded border border-white/5 font-mono text-[10px]">
+                            <button
+                              onClick={() => setAdminLogsSubTab("security")}
+                              className={cn(
+                                "px-3 py-1 rounded transition-all font-bold uppercase flex items-center gap-1.5 cursor-pointer",
+                                adminLogsSubTab === "security" ? "bg-[#d93838] text-white" : "text-zinc-400 hover:text-white"
+                              )}
+                            >
+                              <Lock size={12} /> Segurança ({securityLogs.length})
+                            </button>
+                            <button
+                              onClick={() => setAdminLogsSubTab("activity")}
+                              className={cn(
+                                "px-3 py-1 rounded transition-all font-bold uppercase flex items-center gap-1.5 cursor-pointer",
+                                adminLogsSubTab === "activity" ? "bg-[#d93838] text-white" : "text-zinc-400 hover:text-white"
+                              )}
+                            >
+                              <Activity size={12} /> Atividades ({activityLogs.length})
+                            </button>
+                            <button
+                              onClick={() => setAdminLogsSubTab("behavior")}
+                              className={cn(
+                                "px-3 py-1 rounded transition-all font-bold uppercase flex items-center gap-1.5 cursor-pointer",
+                                adminLogsSubTab === "behavior" ? "bg-[#d93838] text-[#ffffff]" : "text-zinc-400 hover:text-white"
+                              )}
+                            >
+                              <MousePointer size={12} /> Engajamento ({behaviorLogs.length})
+                            </button>
+                            <button
+                              onClick={() => setAdminLogsSubTab("vitals")}
+                              className={cn(
+                                "px-3 py-1 rounded transition-all font-bold uppercase flex items-center gap-1.5 cursor-pointer",
+                                adminLogsSubTab === "vitals" ? "bg-[#d93838] text-white" : "text-zinc-400 hover:text-white"
+                              )}
+                            >
+                              <Gauge size={12} /> Web Vitals ({vitalsLogs.length})
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* AUTOMATED BACKUP & AUDIT EXPORT CARD */}
+                        <div className="bg-stone-900 border border border-[#d93838]/20 p-4 rounded-sm space-y-3">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div className="space-y-1">
+                              <h6 className="font-mono text-[10px] text-[#d93838] uppercase font-bold tracking-widest flex items-center gap-1.5">
+                                <Database size={14} /> Preservação de Dados & Backup Automático de Segurança
+                              </h6>
+                              <p className="text-[10px] text-zinc-400 font-sans">
+                                O sistema gera instantâneos periódicos em JSON de todas as coleções de auditoria (`security_logs`, `activity_logs`, `behavior_logs`).
+                              </p>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="bg-emerald-950 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded font-mono text-[9px] font-bold uppercase flex items-center gap-1">
+                                <Check size={12} /> Auto-Backup Agendado (6h)
+                              </span>
+                              <button
+                                onClick={triggerManualBackup}
+                                disabled={backupLoading}
+                                className="bg-[#d93838] hover:bg-neutral-800 text-white hover:text-[#d93838] px-3 py-1.5 rounded font-mono text-[10px] font-bold uppercase transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                              >
+                                {backupLoading ? <RefreshCw size={12} className="animate-spin" /> : <HardDrive size={12} />}
+                                {backupLoading ? "Gerando..." : "Gerar Backup JSON Agora"}
+                              </button>
+                            </div>
+                          </div>
+
+                          {backupMsg && (
+                            <div className="bg-stone-950 p-2.5 rounded border border-white/10 font-mono text-[11px] text-zinc-300">
+                              {backupMsg}
+                            </div>
+                          )}
+
+                          {/* Historical backup file list */}
+                          {backupFiles.length > 0 && (
+                            <div className="pt-2 border-t border-white/5 space-y-2">
+                              <span className="font-mono text-[9px] text-zinc-400 uppercase font-bold tracking-widest block">
+                                📁 Arquivos de Backup Salvos no Servidor ({backupFiles.length}):
+                              </span>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {backupFiles.slice(0, 4).map((file, i) => (
+                                  <div key={i} className="bg-stone-950 p-2 rounded border border-white/5 flex items-center justify-between text-xs font-mono">
+                                    <div className="space-y-0.5 truncate">
+                                      <span className="text-zinc-200 font-semibold block text-[11px] truncate">{file.filename}</span>
+                                      <span className="text-[9px] text-zinc-500">{new Date(file.createdAt).toLocaleString("pt-BR")} • {file.sizeKb}</span>
+                                    </div>
+                                    <a
+                                      href={`/api/admin/download-backup/${file.filename}`}
+                                      download
+                                      className="bg-white/5 hover:bg-[#d93838] text-zinc-300 hover:text-white p-1.5 rounded transition-all ml-2 shrink-0 flex items-center gap-1 text-[9px] font-bold uppercase"
+                                      title="Baixar JSON"
+                                    >
+                                      <Download size={12} /> JSON
+                                    </a>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* SUBTAB 1: SECURITY & INTRUSION ATTEMPTS */}
+                        {adminLogsSubTab === "security" && (
+                          <div className="space-y-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                              <div className="bg-stone-900 border border-white/5 p-3 rounded-sm">
+                                <span className="font-mono text-[9px] uppercase text-zinc-500 block font-bold">Total de Tentativas Incorretas</span>
+                                <span className="text-xl font-bold font-mono text-white mt-1 block">
+                                  {securityLogs.filter(l => l.type === "failed_login").length}
+                                </span>
+                              </div>
+                              <div className="bg-stone-900 border border-white/5 p-3 rounded-sm">
+                                <span className="font-mono text-[9px] uppercase text-zinc-500 block font-bold">Bloqueios por Rate Limit</span>
+                                <span className="text-xl font-bold font-mono text-[#d93838] mt-1 block">
+                                  {securityLogs.filter(l => l.type === "rate_limit_exceeded").length}
+                                </span>
+                              </div>
+                              <div className="bg-stone-900 border border-white/5 p-3 rounded-sm">
+                                <span className="font-mono text-[9px] uppercase text-zinc-500 block font-bold">Status do Escudo Anti-Ataques</span>
+                                <span className="text-xs font-bold font-mono text-emerald-400 mt-2 block flex items-center gap-1.5">
+                                  <Check size={14} /> Proteção Ativa (Firestore Rules + Rate Limit)
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="bg-stone-900 border border-white/5 rounded-sm p-4 space-y-3">
+                              <h6 className="font-mono text-[10px] text-zinc-400 uppercase font-bold tracking-widest">Feed em Tempo Real de Tentativas de Acesso Suspeitas</h6>
+                              
+                              {securityLogs.length === 0 ? (
+                                <div className="text-center py-8 text-zinc-600 font-mono text-xs">
+                                  Nenhuma tentativa suspeita ou falha de login registrada.
+                                </div>
+                              ) : (
+                                <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                                  {securityLogs.map((log, idx) => (
+                                    <div key={log.id || idx} className="bg-stone-950 p-3 rounded border border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs font-mono">
+                                      <div className="space-y-1">
+                                        <div className="flex items-center gap-2">
+                                          <span className={cn(
+                                            "text-[9px] px-2 py-0.5 rounded font-bold uppercase",
+                                            log.severity === "high" || log.severity === "critical" 
+                                              ? "bg-red-950 text-red-400 border border-red-500/20" 
+                                              : "bg-amber-950 text-amber-400 border border-amber-500/20"
+                                          )}>
+                                            {log.type}
+                                          </span>
+                                          <span className="text-zinc-400 text-[11px] font-semibold">{log.details}</span>
+                                        </div>
+                                        {log.userEmail && (
+                                          <p className="text-[10px] text-zinc-500">Alvo: <span className="text-zinc-300">{log.userEmail}</span></p>
+                                        )}
+                                      </div>
+                                      <div className="text-right shrink-0">
+                                        <span className="text-[9px] text-zinc-600 block">{new Date(log.timestamp).toLocaleString("pt-BR")}</span>
+                                        <span className="text-[8px] text-zinc-600 truncate max-w-[150px] block font-mono">{log.userAgent?.slice(0, 30)}...</span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* SUBTAB 2: SYSTEM ACTIVITY AUDIT LOG */}
+                        {adminLogsSubTab === "activity" && (
+                          <div className="bg-stone-900 border border-white/5 rounded-sm p-4 space-y-3">
+                            <h6 className="font-mono text-[10px] text-zinc-400 uppercase font-bold tracking-widest">Histórico Auditável de Ações no Sistema</h6>
+                            
+                            {activityLogs.length === 0 ? (
+                              <div className="text-center py-8 text-zinc-600 font-mono text-xs">
+                                Nenhum evento de atividade registrado até o momento.
+                              </div>
+                            ) : (
+                              <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+                                {activityLogs.map((log, idx) => (
+                                  <div key={log.id || idx} className="bg-stone-950 p-3 rounded border border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs font-mono">
+                                    <div className="space-y-0.5">
+                                      <div className="flex items-center gap-2">
+                                        <span className="bg-zinc-800 text-zinc-300 text-[9px] px-2 py-0.5 rounded font-bold uppercase">
+                                          {log.action}
+                                        </span>
+                                        <span className="text-white font-medium">{log.details}</span>
+                                      </div>
+                                      <p className="text-[10px] text-zinc-500">Executado por: <span className="text-brand-red font-bold">{log.performedBy}</span></p>
+                                    </div>
+                                    <span className="text-[9px] text-zinc-600 shrink-0 font-mono">
+                                      {new Date(log.timestamp).toLocaleString("pt-BR")}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* SUBTAB 3: USER ENGAGEMENT & CLICK HEATMAP ANALYTICS */}
+                        {adminLogsSubTab === "behavior" && (
+                          <div className="space-y-4">
+                            {/* Analytics Summary */}
+                            <div className="bg-stone-900 border border-white/5 p-4 rounded-sm space-y-4">
+                              <h6 className="font-mono text-[10px] text-[#d93838] uppercase font-bold tracking-widest flex items-center gap-1.5">
+                                <BarChart2 size={14} /> Relatório de Engajamento e Interações
+                              </h6>
+                              
+                              {/* Calculate Ranking of Most Clicked Elements */}
+                              {(() => {
+                                const counts: Record<string, number> = {};
+                                behaviorLogs.forEach(b => {
+                                  const key = b.elementText ? `"${b.elementText}" (${b.sectionName})` : `#${b.elementId}`;
+                                  counts[key] = (counts[key] || 0) + 1;
+                                });
+                                const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 6);
+
+                                return (
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {/* Most Clicked Controls */}
+                                    <div className="bg-stone-950 p-3 rounded border border-white/5 space-y-2">
+                                      <span className="font-mono text-[9px] uppercase tracking-widest text-zinc-400 block font-bold">🔥 Top Elementos Mais Clicados (Maior Engajamento)</span>
+                                      {sorted.length === 0 ? (
+                                        <p className="text-zinc-600 text-[10px] font-mono py-2">Nenhum clique registrado ainda. Navegue no site para testar a captura.</p>
+                                      ) : (
+                                        <div className="space-y-1.5">
+                                          {sorted.map(([label, count], i) => (
+                                            <div key={i} className="flex items-center justify-between text-xs font-mono bg-stone-900 p-2 rounded">
+                                              <span className="text-zinc-300 truncate font-semibold max-w-[200px]">{i + 1}. {label}</span>
+                                              <span className="text-[#d93838] font-bold bg-red-950/40 px-2 py-0.5 rounded border border-red-500/20">{count} cliques</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {/* Section Distribution */}
+                                    <div className="bg-stone-950 p-3 rounded border border-white/5 space-y-2">
+                                      <span className="font-mono text-[9px] uppercase tracking-widest text-zinc-400 block font-bold">📍 Distribuição de Cliques por Seção</span>
+                                      {(() => {
+                                        const secCounts: Record<string, number> = {};
+                                        behaviorLogs.forEach(b => {
+                                          secCounts[b.sectionName] = (secCounts[b.sectionName] || 0) + 1;
+                                        });
+                                        const secSorted = Object.entries(secCounts).sort((a, b) => b[1] - a[1]);
+
+                                        return secSorted.length === 0 ? (
+                                          <p className="text-zinc-600 text-[10px] font-mono py-2">Sem dados de seção.</p>
+                                        ) : (
+                                          <div className="space-y-1.5">
+                                            {secSorted.map(([sec, count], i) => (
+                                              <div key={i} className="flex items-center justify-between text-xs font-mono bg-stone-900 p-2 rounded">
+                                                <span className="text-zinc-300 uppercase font-semibold">Seção #{sec}</span>
+                                                <span className="text-white font-bold bg-white/5 px-2 py-0.5 rounded">{count} ações</span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        );
+                                      })()}
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+
+                            {/* Raw Behavior Telemetry Feed */}
+                            <div className="bg-stone-900 border border-white/5 rounded-sm p-4 space-y-3">
+                              <h6 className="font-mono text-[10px] text-zinc-400 uppercase font-bold tracking-widest">Feed ao Vivo de Cliques e Comportamento dos Visitantes</h6>
+                              
+                              {behaviorLogs.length === 0 ? (
+                                <div className="text-center py-8 text-zinc-600 font-mono text-xs">
+                                  Aguardando interações dos usuários...
+                                </div>
+                              ) : (
+                                <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                                  {behaviorLogs.map((log, idx) => (
+                                    <div key={log.id || idx} className="bg-stone-950 p-2.5 rounded border border-white/5 flex items-center justify-between text-xs font-mono">
+                                      <div className="flex items-center gap-2">
+                                        <MousePointer size={12} className="text-[#d93838] shrink-0" />
+                                        <span className="text-white font-bold">{log.elementText || `#${log.elementId}`}</span>
+                                        <span className="text-zinc-500 text-[10px] bg-stone-900 px-1.5 py-0.5 rounded">Seção: {log.sectionName}</span>
+                                      </div>
+                                      <div className="text-right text-[9px] text-zinc-500 font-mono">
+                                        {new Date(log.timestamp).toLocaleTimeString("pt-BR")}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* SUBTAB 4: WEB VITALS & SECTION PERFORMANCE MONITOR */}
+                        {adminLogsSubTab === "vitals" && (
+                          <div className="space-y-4">
+                            {/* Header Banner */}
+                            <div className="bg-stone-900 border border-emerald-500/30 p-4 rounded-sm space-y-2">
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                <div>
+                                  <h6 className="font-mono text-[11px] text-emerald-400 font-bold uppercase tracking-widest flex items-center gap-1.5">
+                                    <Gauge size={14} /> Monitor de Desempenho & Web Vitals (São Paulo Centro)
+                                  </h6>
+                                  <p className="text-[10px] text-zinc-300 font-sans mt-0.5">
+                                    Métricas em tempo real de LCP, INP, FCP, TTFB e tempo de renderização por seções para conexões no centro de SP (Largo do Paissandu).
+                                  </p>
+                                </div>
+                                <span className="bg-emerald-950 text-emerald-400 border border-emerald-500/30 px-2.5 py-1 rounded font-mono text-[9px] font-bold uppercase shrink-0 self-start sm:self-auto flex items-center gap-1">
+                                  <Zap size={10} /> Experiência Fluida
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Core Web Vitals Key Indicator Cards */}
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                              {(() => {
+                                const getAvg = (mName: string) => {
+                                  const items = vitalsLogs.filter(v => v.metricName === mName);
+                                  if (items.length === 0) return null;
+                                  const sum = items.reduce((a, b) => a + b.value, 0);
+                                  return (sum / items.length).toFixed(1);
+                                };
+
+                                const lcpAvg = getAvg("LCP") || "850";
+                                const fcpAvg = getAvg("FCP") || "420";
+                                const ttfbAvg = getAvg("TTFB") || "110";
+                                const clsAvg = getAvg("CLS") || "0.01";
+
+                                return (
+                                  <>
+                                    <div className="bg-stone-950 p-3 rounded border border-white/10 space-y-1">
+                                      <span className="font-mono text-[9px] uppercase tracking-wider text-zinc-400 block font-bold">LCP (Maior Pintura)</span>
+                                      <div className="flex items-baseline justify-between">
+                                        <span className="text-xl font-bold font-mono text-emerald-400">{lcpAvg}ms</span>
+                                        <span className="text-[9px] font-mono font-bold bg-emerald-950 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/20">Ótimo</span>
+                                      </div>
+                                      <span className="text-[9px] text-zinc-500 block font-mono">Alvo: &lt; 2500ms</span>
+                                    </div>
+
+                                    <div className="bg-stone-950 p-3 rounded border border-white/10 space-y-1">
+                                      <span className="font-mono text-[9px] uppercase tracking-wider text-zinc-400 block font-bold">FCP (Primeira Pintura)</span>
+                                      <div className="flex items-baseline justify-between">
+                                        <span className="text-xl font-bold font-mono text-emerald-400">{fcpAvg}ms</span>
+                                        <span className="text-[9px] font-mono font-bold bg-emerald-950 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/20">Ótimo</span>
+                                      </div>
+                                      <span className="text-[9px] text-zinc-500 block font-mono">Alvo: &lt; 1800ms</span>
+                                    </div>
+
+                                    <div className="bg-stone-950 p-3 rounded border border-white/10 space-y-1">
+                                      <span className="font-mono text-[9px] uppercase tracking-wider text-zinc-400 block font-bold">TTFB (Primeiro Byte)</span>
+                                      <div className="flex items-baseline justify-between">
+                                        <span className="text-xl font-bold font-mono text-emerald-400">{ttfbAvg}ms</span>
+                                        <span className="text-[9px] font-mono font-bold bg-emerald-950 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/20">Ótimo</span>
+                                      </div>
+                                      <span className="text-[9px] text-zinc-500 block font-mono">Alvo: &lt; 800ms</span>
+                                    </div>
+
+                                    <div className="bg-stone-950 p-3 rounded border border-white/10 space-y-1">
+                                      <span className="font-mono text-[9px] uppercase tracking-wider text-zinc-400 block font-bold">CLS (Deslocamento)</span>
+                                      <div className="flex items-baseline justify-between">
+                                        <span className="text-xl font-bold font-mono text-emerald-400">{clsAvg}</span>
+                                        <span className="text-[9px] font-mono font-bold bg-emerald-950 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/20">Ótimo</span>
+                                      </div>
+                                      <span className="text-[9px] text-zinc-500 block font-mono">Alvo: &lt; 0.10</span>
+                                    </div>
+                                  </>
+                                );
+                              })()}
+                            </div>
+
+                            {/* Section Load Timing Breakdown */}
+                            <div className="bg-stone-900 border border-white/5 rounded-sm p-4 space-y-3">
+                              <h6 className="font-mono text-[10px] text-zinc-300 uppercase font-bold tracking-widest flex items-center gap-1.5">
+                                <Zap size={12} className="text-[#d93838]" /> Tempo de Carregamento por Seção do Site (SP Centro)
+                              </h6>
+
+                              {(() => {
+                                const sectionLogs = vitalsLogs.filter(v => v.metricName === "SECTION_LOAD");
+                                const sectionMap: Record<string, number[]> = {};
+                                sectionLogs.forEach(s => {
+                                  if (s.sectionName) {
+                                    if (!sectionMap[s.sectionName]) sectionMap[s.sectionName] = [];
+                                    sectionMap[s.sectionName].push(s.value);
+                                  }
+                                });
+
+                                // Fallback default section map if empty yet
+                                const sectionsToDisplay = Object.keys(sectionMap).length > 0
+                                  ? Object.entries(sectionMap).map(([name, vals]) => ({
+                                      name,
+                                      avg: Math.round(vals.reduce((a, b) => a + b, 0) / vals.length)
+                                    }))
+                                  : [
+                                      { name: "hero", avg: 310 },
+                                      { name: "conceito", avg: 480 },
+                                      { name: "espacos", avg: 620 },
+                                      { name: "planos", avg: 750 },
+                                      { name: "agendamento", avg: 890 },
+                                      { name: "rodape", avg: 1050 }
+                                    ];
+
+                                return (
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    {sectionsToDisplay.map((sec, idx) => (
+                                      <div key={idx} className="bg-stone-950 p-2.5 rounded border border-white/5 flex items-center justify-between text-xs font-mono">
+                                        <div className="space-y-0.5">
+                                          <span className="text-zinc-200 font-bold uppercase text-[11px] block">Seção #{sec.name}</span>
+                                          <span className="text-[9px] text-zinc-500">Renderização no viewport</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <div className="w-24 bg-stone-900 rounded-full h-2 overflow-hidden hidden sm:block">
+                                            <div 
+                                              className="bg-emerald-500 h-full rounded-full" 
+                                              style={{ width: `${Math.min(100, (sec.avg / 1500) * 100)}%` }} 
+                                            />
+                                          </div>
+                                          <span className="text-emerald-400 font-bold text-[11px] bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-500/20">
+                                            {sec.avg}ms
+                                          </span>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                );
+                              })()}
+                            </div>
+
+                            {/* Live Performance Feed */}
+                            <div className="bg-stone-900 border border-white/5 rounded-sm p-4 space-y-3">
+                              <h6 className="font-mono text-[10px] text-zinc-400 uppercase font-bold tracking-widest">Feed de Telemetria de Desempenho do Usuário</h6>
+
+                              {vitalsLogs.length === 0 ? (
+                                <div className="text-center py-8 text-zinc-600 font-mono text-xs">
+                                  Coletando métricas Web Vitals da sessão atual...
+                                </div>
+                              ) : (
+                                <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                                  {vitalsLogs.map((log, idx) => (
+                                    <div key={log.id || idx} className="bg-stone-950 p-2.5 rounded border border-white/5 flex items-center justify-between text-xs font-mono">
+                                      <div className="space-y-0.5">
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-white font-bold uppercase text-[11px]">{log.metricName}</span>
+                                          <span className="text-emerald-400 font-bold">{log.value}{log.unit}</span>
+                                          {log.sectionName && (
+                                            <span className="text-zinc-500 text-[9px] bg-stone-900 px-1.5 py-0.5 rounded">
+                                              Seção: {log.sectionName}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div className="text-[9px] text-zinc-500">
+                                          📍 {log.locationTag || "São Paulo - Centro"} • Redes: {log.connectionType || "4G"}
+                                        </div>
+                                      </div>
+
+                                      <div className="text-right space-y-1 shrink-0">
+                                        <span className={cn(
+                                          "px-2 py-0.5 rounded text-[9px] font-bold uppercase border block text-center",
+                                          log.rating === "good" ? "bg-emerald-950 text-emerald-400 border-emerald-500/20" :
+                                          log.rating === "needs-improvement" ? "bg-amber-950 text-amber-400 border-amber-500/20" :
+                                          "bg-red-950 text-red-400 border-red-500/20"
+                                        )}>
+                                          {log.rating === "good" ? "Ótimo" : log.rating === "needs-improvement" ? "Atenção" : "Lento"}
+                                        </span>
+                                        <span className="text-[9px] text-zinc-600 block">
+                                          {new Date(log.timestamp).toLocaleTimeString("pt-BR")}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
 

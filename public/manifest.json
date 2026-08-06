@@ -1,0 +1,27 @@
+{
+  "short_name": "Triângulo",
+  "name": "Triângulo Estúdio • O Estúdio de Fotos e Vídeos no Centro de SP",
+  "icons": [
+    {
+      "src": "https://i.postimg.cc/bvrMr15X/logo-triangulo-fotoclube-negativo-PNG.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://i.postimg.cc/bvrMr15X/logo-triangulo-fotoclube-negativo-PNG.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0c0a09",
+  "theme_color": "#d93838",
+  "display": "standalone",
+  "orientation": "portrait",
+  "description": "Estúdio fotográfico de locação mais completo, barato e acessível do Centro de São Paulo. Agendamento instantâneo, simulador e galeria.",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "categories": ["business", "photography", "lifestyle"]
+}

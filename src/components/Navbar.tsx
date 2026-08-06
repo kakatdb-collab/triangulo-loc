@@ -4,14 +4,27 @@
  */
 
 import { useState, useEffect } from "react";
-import { Camera, Calendar, Layers, Menu, X, User } from "lucide-react";
+import { Camera, Calendar, Layers, Menu, X, User, Download } from "lucide-react";
 import { auth, onAuthStateChanged, doc, getDoc, db } from "../lib/firebase";
+import { promptPwaInstall } from "../lib/pwa";
 
 export default function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeSection, setActiveSection] = useState("hero");
   const [loggedInUser, setLoggedInUser] = useState<any>(null);
+  const [canInstallPwa, setCanInstallPwa] = useState(false);
+
+  useEffect(() => {
+    const handlePwaInstallable = () => setCanInstallPwa(true);
+    window.addEventListener("pwa-installable", handlePwaInstallable);
+    return () => window.removeEventListener("pwa-installable", handlePwaInstallable);
+  }, []);
+
+  const handleInstallClick = async () => {
+    const installed = await promptPwaInstall();
+    if (installed) setCanInstallPwa(false);
+  };
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
@@ -116,6 +129,17 @@ export default function Navbar() {
             ))}
           </ul>
 
+          {canInstallPwa && (
+            <button
+              onClick={handleInstallClick}
+              className="flex items-center gap-1.5 bg-emerald-950 hover:bg-emerald-900 text-emerald-400 border border-emerald-500/30 font-mono text-xs uppercase tracking-widest px-3 py-2.5 rounded-sm transition-all duration-300 active:scale-95 cursor-pointer"
+              title="Instalar App Triângulo"
+            >
+              <Download size={14} className="animate-bounce" />
+              Instalar App
+            </button>
+          )}
+
           <a
             href="#reservar"
             className="flex items-center gap-2 bg-brand-red hover:bg-red-700 text-white font-mono text-xs uppercase tracking-widest px-5 py-2.5 rounded-sm transition-all duration-300 shadow-md shadow-brand-red/20 active:scale-95"
@@ -163,6 +187,18 @@ export default function Navbar() {
             ))}
           </ul>
           <div className="px-6 flex flex-col gap-3">
+            {canInstallPwa && (
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  handleInstallClick();
+                }}
+                className="flex justify-center items-center gap-2 w-full bg-emerald-950 text-emerald-400 border border-emerald-500/30 font-mono text-xs uppercase tracking-widest py-3 rounded-sm transition-all duration-300"
+              >
+                <Download size={14} className="animate-bounce" />
+                Instalar Aplicativo (PWA)
+              </button>
+            )}
             <a
               href="#reservar"
               onClick={() => setMobileMenuOpen(false)}
