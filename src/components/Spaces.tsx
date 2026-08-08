@@ -17,13 +17,13 @@ import {
   FileDown
 } from "lucide-react";
 import { STUDIO_SPACES, ASSETS } from "../data";
-import { db, collection, onSnapshot } from "../lib/firebase";
+import { db, collection, doc, onSnapshot } from "../lib/firebase";
 
 interface SpacesProps {
   onSelectSpace: (spaceId: string) => void;
 }
 
-const PRISMA_PHOTOS = [
+export const DEFAULT_PRISMA_PHOTOS = [
   {
     url: "https://triangulofotoclub.com.br/locacao/estudio/01-Escritorio.webp",
     caption: "Escritório elegante e versátil, multiuso para reunião e trabalho.",
@@ -140,20 +140,10 @@ const PRISMA_PHOTOS = [
 
 export default function Spaces({ onSelectSpace }: SpacesProps) {
   const [activePhotoIdx, setActivePhotoIdx] = useState(0);
-  const [customSpaces, setCustomSpaces] = useState<any[]>([]);
 
-  useEffect(() => {
-    const unsub = onSnapshot(collection(db, "spaces"), (snap) => {
-      if (!snap.empty) {
-        const list: any[] = [];
-        snap.forEach((doc) => list.push({ id: doc.id, ...doc.data() }));
-        if (list.length > 0) setCustomSpaces(list);
-      }
-    });
-    return () => unsub();
-  }, []);
-
-  const space = customSpaces[0] || STUDIO_SPACES[0] || {
+  const [spaceInfo, setSpaceInfo] = useState({
+    headerBadge: "Nosso Espaço",
+    headerDesc: "Um estúdio completo, flexível e totalmente equipado no coração de São Paulo. Conheça cada detalhe através da nossa galeria exclusiva.",
     id: "prisma",
     name: "Triângulo Estúdio",
     subtitle: "O infinito branco e iluminação profissional",
@@ -162,7 +152,7 @@ export default function Spaces({ onSelectSpace }: SpacesProps) {
     halfDayRate: 400,
     fullDayRate: 700,
     capacity: 15,
-    area: "120m²",
+    area: "90m²",
     features: [
       "Trilhos aéreos",
       "3 Tochas de estudio Godox com modificadores.",
@@ -170,7 +160,64 @@ export default function Spaces({ onSelectSpace }: SpacesProps) {
       "Copa",
       "Camarim (usando o ambiente do quarto cencio como camarim).",
     ],
-  };
+    manualUrl: "https://triangulofotoclub.com.br/locacao/estudio/pdf%20locac%CC%A7a%CC%83o.pdf",
+    manualTitle: "Baixe nosso Manual",
+    manualDesc: "Confira todas as especificações técnicas, regras do estúdio e informações detalhadas sobre as salas do Triângulo.",
+    assistanceTitle: "Precisa de assistência técnica em seu ensaio?",
+    assistanceDesc: "Nossos estúdios contam com assistência presencial de setup e auxílio básico de briefing. Você também pode alugar assistentes fotográficos avançados diretamente no nosso formulário abaixo."
+  });
+
+  const [photos, setPhotos] = useState<Array<{ url: string; caption: string }>>(DEFAULT_PRISMA_PHOTOS);
+
+  useEffect(() => {
+    // 1. Subscribe to Space info settings
+    const unsubInfo = onSnapshot(doc(db, "site_settings", "spaces"), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        setSpaceInfo((prev) => ({
+          ...prev,
+          headerBadge: data.headerBadge || prev.headerBadge,
+          headerDesc: data.headerDesc || prev.headerDesc,
+          name: data.name || prev.name,
+          subtitle: data.subtitle || prev.subtitle,
+          description: data.description || prev.description,
+          hourlyRate: typeof data.hourlyRate === "number" ? data.hourlyRate : prev.hourlyRate,
+          halfDayRate: typeof data.halfDayRate === "number" ? data.halfDayRate : prev.halfDayRate,
+          fullDayRate: typeof data.fullDayRate === "number" ? data.fullDayRate : prev.fullDayRate,
+          capacity: typeof data.capacity === "number" ? data.capacity : prev.capacity,
+          area: data.area || prev.area,
+          features: Array.isArray(data.features) && data.features.length > 0 ? data.features : prev.features,
+          manualUrl: data.manualUrl || prev.manualUrl,
+          manualTitle: data.manualTitle || prev.manualTitle,
+          manualDesc: data.manualDesc || prev.manualDesc,
+          assistanceTitle: data.assistanceTitle || prev.assistanceTitle,
+          assistanceDesc: data.assistanceDesc || prev.assistanceDesc
+        }));
+      }
+    });
+
+    // 2. Subscribe to Photos Gallery
+    const unsubGallery = onSnapshot(doc(db, "site_settings", "spaces_gallery"), (snap) => {
+      if (snap.exists()) {
+        const gData = snap.data();
+        if (Array.isArray(gData.photos) && gData.photos.length > 0) {
+          const validPhotos = gData.photos.filter((p: any) => p && typeof p.url === "string" && p.url.trim().length > 0);
+          if (validPhotos.length > 0) {
+            setPhotos(validPhotos);
+          }
+        }
+      }
+    });
+
+    return () => {
+      unsubInfo();
+      unsubGallery();
+    };
+  }, []);
+
+  const totalPhotos = photos.length > 0 ? photos.length : 1;
+  const currentPhotoIdx = activePhotoIdx < photos.length ? activePhotoIdx : 0;
+  const currentPhoto = photos[currentPhotoIdx] || DEFAULT_PRISMA_PHOTOS[0];
 
   return (
     <section id="espacos" className="py-24 bg-stone-900 text-white relative">
@@ -182,15 +229,15 @@ export default function Spaces({ onSelectSpace }: SpacesProps) {
             <div className="flex items-center gap-3 mb-4">
               <span className="w-8 h-[2px] bg-brand-red block" />
               <span className="text-brand-red font-mono text-xs uppercase tracking-widest font-semibold">
-                Nosso Espaço
+                {spaceInfo.headerBadge}
               </span>
             </div>
             <h2 className="font-display text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight">
-              {space.name}
+              {spaceInfo.name}
             </h2>
           </div>
           <p className="text-zinc-400 font-light max-w-md mt-4 md:mt-0 leading-relaxed text-sm">
-            Um estúdio completo, flexível e totalmente equipado no coração de São Paulo. Conheça cada detalhe através da nossa galeria exclusiva.
+            {spaceInfo.headerDesc}
           </p>
         </div>
 
@@ -204,9 +251,9 @@ export default function Spaces({ onSelectSpace }: SpacesProps) {
             <div className="relative aspect-[3/2] sm:aspect-[16/10] bg-stone-950 rounded border border-white/5 overflow-hidden group shadow-2xl flex-grow">
               <AnimatePresence mode="wait">
                 <motion.img
-                  key={activePhotoIdx}
-                  src={PRISMA_PHOTOS[activePhotoIdx].url}
-                  alt={PRISMA_PHOTOS[activePhotoIdx].caption}
+                  key={currentPhotoIdx}
+                  src={currentPhoto.url}
+                  alt={currentPhoto.caption || "Foto do estúdio"}
                   initial={{ opacity: 0, scale: 1.02 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0 }}
@@ -218,33 +265,37 @@ export default function Spaces({ onSelectSpace }: SpacesProps) {
               </AnimatePresence>
               
               {/* Left and Right Navigation Chevrons */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setActivePhotoIdx((prev) => (prev === 0 ? PRISMA_PHOTOS.length - 1 : prev - 1));
-                }}
-                className="absolute left-3 top-1/2 -translate-y-1/2 w-8 sm:w-10 h-8 sm:h-10 rounded-full bg-black/70 hover:bg-[#d93838] text-white flex items-center justify-center transition-all duration-300 border border-white/10 active:scale-90 md:opacity-0 group-hover:opacity-100 focus:opacity-100 cursor-pointer z-10"
-                aria-label="Foto anterior"
-              >
-                <ChevronLeft size={16} />
-              </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setActivePhotoIdx((prev) => (prev === PRISMA_PHOTOS.length - 1 ? 0 : prev + 1));
-                }}
-                className="absolute right-3 top-1/2 -translate-y-1/2 w-8 sm:w-10 h-8 sm:h-10 rounded-full bg-black/70 hover:bg-[#d93838] text-white flex items-center justify-center transition-all duration-300 border border-white/10 active:scale-90 md:opacity-0 group-hover:opacity-100 focus:opacity-100 cursor-pointer z-10"
-                aria-label="Próxima foto"
-              >
-                <ChevronRight size={16} />
-              </button>
+              {totalPhotos > 1 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActivePhotoIdx((prev) => (prev === 0 ? totalPhotos - 1 : prev - 1));
+                    }}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 w-8 sm:w-10 h-8 sm:h-10 rounded-full bg-black/70 hover:bg-[#d93838] text-white flex items-center justify-center transition-all duration-300 border border-white/10 active:scale-90 md:opacity-0 group-hover:opacity-100 focus:opacity-100 cursor-pointer z-10"
+                    aria-label="Foto anterior"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActivePhotoIdx((prev) => (prev === totalPhotos - 1 ? 0 : prev + 1));
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-8 sm:w-10 h-8 sm:h-10 rounded-full bg-black/70 hover:bg-[#d93838] text-white flex items-center justify-center transition-all duration-300 border border-white/10 active:scale-90 md:opacity-0 group-hover:opacity-100 focus:opacity-100 cursor-pointer z-10"
+                    aria-label="Próxima foto"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </>
+              )}
 
               {/* Overlay Top Bar indicator */}
               <div className="absolute top-4 left-4 bg-black/85 backdrop-blur-md px-3 py-1.5 text-[9px] font-mono uppercase tracking-wider text-white border border-white/10 rounded flex items-center gap-1.5">
                 <Camera size={10} className="text-[#d93838]" />
-                <span>Foto {activePhotoIdx + 1} de {PRISMA_PHOTOS.length}</span>
+                <span>Foto {currentPhotoIdx + 1} de {totalPhotos}</span>
               </div>
 
               {/* Status Ribbon overlay */}
@@ -255,10 +306,10 @@ export default function Spaces({ onSelectSpace }: SpacesProps) {
               {/* Cover Bottom Gradient & Caption */}
               <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/45 to-transparent p-6 pt-12">
                 <span className="text-xs font-mono uppercase text-[#d93838] block mb-1 tracking-wider">
-                  Triângulo Estúdio • Diferenciais
+                  {spaceInfo.name} • Diferenciais
                 </span>
                 <p className="text-sm text-zinc-200 font-light tracking-wide drop-shadow-sm pr-12">
-                  {PRISMA_PHOTOS[activePhotoIdx].caption}
+                  {currentPhoto.caption}
                 </p>
               </div>
 
@@ -268,25 +319,25 @@ export default function Spaces({ onSelectSpace }: SpacesProps) {
 
             {/* Thumbnail Navigation Row - Horizontal snap scroll with scrollbar customization */}
             <div className="flex gap-2 sm:gap-2.5 overflow-x-auto pb-3 pt-1 scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-stone-900 scrollbar-thumb-rounded-full snap-x" id="gallery-navigation-thumbnails">
-              {PRISMA_PHOTOS.map((photo, index) => (
+              {photos.map((photo, index) => (
                 <button
                   key={index}
                   onClick={() => setActivePhotoIdx(index)}
-                  className={`relative shrink-0 w-16 sm:w-20 aspect-[4/3] rounded overflow-hidden border transition-all duration-300 snap-start ${
-                    activePhotoIdx === index 
+                  className={`relative shrink-0 w-16 sm:w-20 aspect-[4/3] rounded overflow-hidden border transition-all duration-300 snap-start cursor-pointer ${
+                    currentPhotoIdx === index 
                       ? "border-[#d93838] scale-95 shadow-md shadow-[#d93838]/10" 
                       : "border-white/5 hover:border-white/20 filter brightness-75 hover:brightness-100"
                   }`}
                 >
                   <img
                     src={photo.url}
-                    alt={`Thumbnail ${index + 1}`}
+                    alt={photo.caption || `Thumbnail ${index + 1}`}
                     loading="lazy"
                     decoding="async"
                     referrerPolicy="no-referrer"
                     className="w-full h-full object-cover"
                   />
-                  {activePhotoIdx === index && (
+                  {currentPhotoIdx === index && (
                     <div className="absolute inset-0 bg-[#d93838]/10 flex items-center justify-center">
                       <div className="w-1.5 h-1.5 rounded-full bg-[#d93838]" />
                     </div>
@@ -307,7 +358,7 @@ export default function Spaces({ onSelectSpace }: SpacesProps) {
               <div>
                 <div className="flex items-center justify-between gap-4 mb-4">
                   <span className="text-[10px] font-mono uppercase tracking-widest text-[#d93838] font-bold">
-                    {space.subtitle}
+                    {spaceInfo.subtitle}
                   </span>
                   <div className="bg-[#d93838]/5 border border-[#d93838]/30 px-2 py-0.5 rounded text-[10px] font-mono text-zinc-300">
                     Estúdio Único
@@ -315,11 +366,11 @@ export default function Spaces({ onSelectSpace }: SpacesProps) {
                 </div>
 
                 <h3 className="font-display font-black text-2xl sm:text-3xl text-white mb-4 group-hover:text-[#d93838] transition-colors">
-                  {space.name}
+                  {spaceInfo.name}
                 </h3>
 
                 <p className="text-xs sm:text-sm text-zinc-400 font-light leading-relaxed mb-6">
-                  {space.description}
+                  {spaceInfo.description}
                 </p>
 
                 {/* Specific Space Specs Grid */}
@@ -330,7 +381,7 @@ export default function Spaces({ onSelectSpace }: SpacesProps) {
                     </div>
                     <div>
                       <span className="text-[9px] font-mono text-zinc-500 uppercase block">Capacidade</span>
-                      <span className="text-xs font-mono font-bold text-white">Até {space.capacity} pessoas</span>
+                      <span className="text-xs font-mono font-bold text-white">Até {spaceInfo.capacity} pessoas</span>
                     </div>
                   </div>
 
@@ -340,7 +391,7 @@ export default function Spaces({ onSelectSpace }: SpacesProps) {
                     </div>
                     <div>
                       <span className="text-[9px] font-mono text-zinc-500 uppercase block">Área Útil</span>
-                      <span className="text-xs font-mono font-bold text-white">{space.area}</span>
+                      <span className="text-xs font-mono font-bold text-white">{spaceInfo.area}</span>
                     </div>
                   </div>
                 </div>
@@ -350,7 +401,7 @@ export default function Spaces({ onSelectSpace }: SpacesProps) {
                   <span className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 block mb-2">
                     Incluso em todas as locações:
                   </span>
-                  {space.features.map((perk, pIdx) => (
+                  {spaceInfo.features.map((perk, pIdx) => (
                     <div key={pIdx} className="flex items-start gap-2.5 text-xs text-zinc-400 font-light">
                       <CheckCircle2 size={13} className="mt-0.5 text-[#d93838] shrink-0" />
                       <span>{perk}</span>
@@ -367,15 +418,15 @@ export default function Spaces({ onSelectSpace }: SpacesProps) {
                       Valores Especiais
                     </span>
                     <span className="text-[11px] text-zinc-300 font-medium font-mono">
-                      4h: R$ {space.halfDayRate} | 8h: R$ {space.fullDayRate}
+                      4h: R$ {spaceInfo.halfDayRate} | 8h: R$ {spaceInfo.fullDayRate}
                     </span>
                     <div className="text-lg font-bold text-white mt-1">
-                      R$ {space.hourlyRate} <span className="text-xs font-mono text-zinc-500">/ hora</span>
+                      R$ {spaceInfo.hourlyRate} <span className="text-xs font-mono text-zinc-500">/ hora</span>
                     </div>
                   </div>
 
                   <button
-                    onClick={() => onSelectSpace(space.id)}
+                    onClick={() => onSelectSpace(spaceInfo.id)}
                     className="w-full sm:w-auto flex items-center justify-center gap-1.5 bg-[#d93838] hover:bg-neutral-800 text-white hover:text-white font-mono text-xs uppercase tracking-wider px-6 py-4 rounded transition-all duration-300 active:scale-95 whitespace-nowrap border border-transparent hover:border-[#d93838]/40 cursor-pointer shadow-lg shadow-[#d93838]/10"
                   >
                     Reservar Estúdio
@@ -397,10 +448,10 @@ export default function Spaces({ onSelectSpace }: SpacesProps) {
             </div>
             <div>
               <h4 className="font-display font-bold text-lg text-white mb-1">
-                Precisa de assistência técnica em seu ensaio?
+                {spaceInfo.assistanceTitle}
               </h4>
               <p className="text-xs text-zinc-400 font-light max-w-xl leading-relaxed">
-                Nossos estúdios contam com assistência presencial de setup e auxílio básico de briefing. Você também pode alugar assistentes fotográficos avançados diretamente no nosso formulário abaixo.
+                {spaceInfo.assistanceDesc}
               </p>
             </div>
           </div>
@@ -421,26 +472,26 @@ export default function Spaces({ onSelectSpace }: SpacesProps) {
             <div>
               <h4 className="font-display font-bold text-lg text-white mb-1">
                 <a 
-                  href="https://triangulofotoclub.com.br/locacao/estudio/pdf%20locac%CC%A7a%CC%83o.pdf"
+                  href={spaceInfo.manualUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="hover:text-brand-red hover:underline transition-colors duration-300"
                 >
-                  Baixe nosso Manual
+                  {spaceInfo.manualTitle}
                 </a>
               </h4>
               <p className="text-xs text-zinc-400 font-light max-w-xl leading-relaxed">
-                Confira todas as especificações técnicas, regras do estúdio e informações detalhadas sobre as salas do Triângulo.
+                {spaceInfo.manualDesc}
               </p>
             </div>
           </div>
           <a
-            href="https://triangulofotoclub.com.br/locacao/estudio/pdf%20locac%CC%A7a%CC%83o.pdf"
+            href={spaceInfo.manualUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="w-full md:w-auto bg-brand-red hover:bg-red-700 text-white font-mono text-xs uppercase tracking-wider py-3 px-6 rounded text-center transition-all duration-300 cursor-pointer active:scale-95 shadow-md shadow-brand-red/10 shrink-0 flex items-center justify-center gap-2"
           >
-            Baixe nosso Manual
+            {spaceInfo.manualTitle}
           </a>
         </div>
 
@@ -448,3 +499,4 @@ export default function Spaces({ onSelectSpace }: SpacesProps) {
     </section>
   );
 }
+

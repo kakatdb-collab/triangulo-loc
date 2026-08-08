@@ -30,6 +30,13 @@ import {
   limit,
   getDocFromServer
 } from "firebase/firestore";
+import {
+  getStorage,
+  ref,
+  uploadBytes,
+  getDownloadURL,
+  deleteObject
+} from "firebase/storage";
 
 import firebaseConfig from "../../firebase-applet-config.json";
 
@@ -44,6 +51,44 @@ export const auth = getAuth(app);
 export const db = firebaseConfig.firestoreDatabaseId 
   ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
   : getFirestore(app);
+
+// Initialize Firebase Storage safely (Plano Spark Gratuito)
+let storageInstance: any = null;
+try {
+  if (firebaseConfig && (firebaseConfig as any).storageBucket) {
+    storageInstance = getStorage(app);
+  }
+} catch (e) {
+  console.warn("Firebase Storage não está ativo ou disponível neste projeto:", e);
+}
+
+export const storage = storageInstance;
+
+/**
+ * Uploads a file to Firebase Storage (Plano Spark Gratuito) or converts to Data URL fallback.
+ */
+export async function uploadFileToStorage(file: File, pathFolder = "uploads"): Promise<string> {
+  try {
+    if (storage) {
+      const timestamp = Date.now();
+      const cleanFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const storageRef = ref(storage, `${pathFolder}/${timestamp}_${cleanFileName}`);
+      const snapshot = await uploadBytes(storageRef, file);
+      const downloadUrl = await getDownloadURL(snapshot.ref);
+      return downloadUrl;
+    }
+  } catch (error) {
+    console.warn("Erro no upload para Firebase Storage, utilizando fallback de arquivo:", error);
+  }
+
+  // Fallback seguro em Data URL se o Storage do Firebase não estiver habilitado no projeto
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = (err) => reject(new Error("Falha ao ler o arquivo selecionado."));
+    reader.readAsDataURL(file);
+  });
+}
 
 export enum OperationType {
   CREATE = 'create',
@@ -136,6 +181,10 @@ export {
   orderBy,
   addDoc,
   onSnapshot,
-  limit
+  limit,
+  ref,
+  uploadBytes,
+  getDownloadURL,
+  deleteObject
 };
 export type { FirebaseUser };

@@ -11,6 +11,7 @@ import Spaces from "./components/Spaces";
 import Pricing from "./components/Pricing";
 import Footer from "./components/Footer";
 import CustomerPanel from "./components/CustomerPanel";
+import AnalyticsTracker from "./components/AnalyticsTracker";
 import { Booking } from "./types";
 import { db, doc, getDoc, updateDoc, collection, addDoc } from "./lib/firebase";
 
@@ -210,6 +211,9 @@ export default function App() {
         }} 
         initialBookingToPay={bookingToPay}
       />
+
+      {/* Real-time Marketing & Analytics Tracker (GA4, Google Ads, Meta Pixel, Google Business) */}
+      <AnalyticsTracker />
     </div>
   );
 }

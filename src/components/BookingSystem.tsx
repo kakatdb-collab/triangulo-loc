@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Calendar as CalIcon, 
@@ -19,13 +19,25 @@ import {
   TrendingUp,
   CreditCard,
   FileText,
-  MessageSquare
+  MessageSquare,
+  Lock,
+  User,
+  Shield,
+  Eye,
+  EyeOff
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import { STUDIO_SPACES, EQUIPMENT_LIST } from "../data";
 import { StudioSpace, Equipment, Booking } from "../types";
-import { db, auth, doc, setDoc, onSnapshot, collection, handleFirestoreError, OperationType, cleanFirestoreData } from "../lib/firebase";
+import { 
+  db, auth, doc, setDoc, getDoc, deleteDoc, onSnapshot, collection, 
+  onAuthStateChanged, FirebaseUser, handleFirestoreError, OperationType, 
+  cleanFirestoreData, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail,
+  query, where, getDocs
+} from "../lib/firebase";
 import { logActivityEvent } from "../lib/analytics";
+import { sanitizeText, sanitizeEmail, sanitizePhone, sanitizeCpfCnpj, isSuspiciousInput } from "../lib/sanitize";
+import { trackConversionEvent, trackWhatsAppClick } from "../lib/analytics";
 
 interface BookingSystemProps {
   selectedSpaceId: string;
@@ -91,6 +103,8 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
   // Contract & Rules details
   const [clientCpfCnpj, setClientCpfCnpj] = useState("");
   const [clientCep, setClientCep] = useState("");
+  const [isSearchingCep, setIsSearchingCep] = useState(false);
+  const [cepError, setCepError] = useState("");
   const [clientAddress, setClientAddress] = useState("");
   const [clientAddressNum, setClientAddressNum] = useState("");
   const [clientAddressComp, setClientAddressComp] = useState("");
@@ -99,6 +113,7 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
   const [clientAddressUF, setClientAddressUF] = useState("");
   const [acceptedRules, setAcceptedRules] = useState(false);
   const [isRulesModalOpen, setIsRulesModalOpen] = useState(false);
+  const numberInputRef = useRef<HTMLInputElement>(null);
 
   // System states
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -106,6 +121,24 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
   const [localBookings, setLocalBookings] = useState<Booking[]>([]);
   const [phoneError, setPhoneError] = useState("");
   const [emailError, setEmailError] = useState("");
+
+  // User Auth & Bookings state
+  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+  const [userRole, setUserRole] = useState<"client" | "admin" | null>(null);
+  const [activeBookings, setActiveBookings] = useState<Booking[]>([]);
+  const [loadingBookings, setLoadingBookings] = useState<boolean>(true);
+
+  // User Registration & Account Creation Modal states
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authPassword, setAuthPassword] = useState("");
+  const [authConfirmPassword, setAuthConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [authError, setAuthError] = useState("");
+  const [authSuccess, setAuthSuccess] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+  const [pendingBookingData, setPendingBookingData] = useState<any>(null);
 
   // Derived current space selection
   const currentSpace = STUDIO_SPACES.find(s => s.id === selectedSpaceId) || STUDIO_SPACES[0];
@@ -120,6 +153,100 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
         console.error("Erro ao ler reservas do local storage", e);
       }
     }
+  }, []);
+
+  // Listen to Auth State & subscribe to user's or admin's bookings in real time
+  useEffect(() => {
+    let unsubBookings: (() => void) | null = null;
+
+    const unsubAuth = onAuthStateChanged(auth, async (user) => {
+      setCurrentUser(user);
+
+      if (unsubBookings) {
+        unsubBookings();
+        unsubBookings = null;
+      }
+
+      if (!user) {
+        setUserRole(null);
+        setActiveBookings([]);
+        setLoadingBookings(false);
+        return;
+      }
+
+      const ADMIN_EMAILS = [
+        "contato@triangulofotoclub.com.br",
+        "kakatdb@gmail.com"
+      ];
+      const userEmail = user.email?.toLowerCase().trim() || "";
+      const isAdminEmail = ADMIN_EMAILS.includes(userEmail);
+
+      let role: "client" | "admin" = isAdminEmail ? "admin" : "client";
+      try {
+        const uSnap = await getDoc(doc(db, "users", user.uid));
+        if (uSnap.exists()) {
+          const uData = uSnap.data();
+          if (uData.role === "admin") role = "admin";
+          // Autofill form if user fields exist and inputs are empty
+          if (uData.name) setClientName(prev => prev || uData.name);
+          if (uData.email) setClientEmail(prev => prev || uData.email);
+          if (uData.phone) setClientPhone(prev => prev || uData.phone);
+          if (uData.cpfCnpj) setClientCpfCnpj(prev => prev || uData.cpfCnpj);
+          if (uData.cep) setClientCep(prev => prev || uData.cep);
+          if (uData.address) setClientAddress(prev => prev || uData.address);
+          if (uData.addressNum) setClientAddressNum(prev => prev || uData.addressNum);
+          if (uData.addressBairro) setClientAddressBairro(prev => prev || uData.addressBairro);
+          if (uData.addressCidade) setClientAddressCidade(prev => prev || uData.addressCidade);
+          if (uData.addressUF) setClientAddressUF(prev => prev || uData.addressUF);
+        } else {
+          if (user.displayName) setClientName(prev => prev || user.displayName);
+          if (user.email) setClientEmail(prev => prev || user.email);
+        }
+      } catch (err) {
+        console.error("Error loading user profile:", err);
+      }
+      setUserRole(role);
+
+      setLoadingBookings(true);
+      if (role === "admin") {
+        unsubBookings = onSnapshot(collection(db, "bookings"), (snap) => {
+          const list: Booking[] = [];
+          snap.forEach((doc) => {
+            list.push({ id: doc.id, ...doc.data() } as Booking);
+          });
+          list.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+          setActiveBookings(list);
+          setLoadingBookings(false);
+        }, (err) => {
+          console.error("Error loading admin bookings:", err);
+          setLoadingBookings(false);
+        });
+      } else {
+        unsubBookings = onSnapshot(collection(db, "bookings"), (snap) => {
+          const list: Booking[] = [];
+          snap.forEach((doc) => {
+            const data = doc.data() as Booking;
+            if (
+              data.userId === user.uid ||
+              (userEmail && data.clientEmail?.toLowerCase() === userEmail)
+            ) {
+              list.push({ id: doc.id, ...data });
+            }
+          });
+          list.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+          setActiveBookings(list);
+          setLoadingBookings(false);
+        }, (err) => {
+          console.error("Error loading client bookings:", err);
+          setLoadingBookings(false);
+        });
+      }
+    });
+
+    return () => {
+      unsubAuth();
+      if (unsubBookings) unsubBookings();
+    };
   }, []);
 
   // Sync state back
@@ -487,8 +614,10 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
       formatted = cleaned.substring(0, 5) + "-" + cleaned.substring(5, 8);
     }
     setClientCep(formatted);
+    setCepError("");
 
     if (cleaned.length === 8) {
+      setIsSearchingCep(true);
       try {
         const response = await fetch(`https://viacep.com.br/ws/${cleaned}/json/`);
         const data = await response.json();
@@ -497,9 +626,18 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
           setClientAddressBairro(data.bairro || "");
           setClientAddressCidade(data.localidade || "");
           setClientAddressUF(data.uf || "");
+          setCepError("");
+          setTimeout(() => {
+            numberInputRef.current?.focus();
+          }, 100);
+        } else {
+          setCepError("CEP não localizado. Por favor, preencha o endereço manualmente.");
         }
       } catch (err) {
         console.error("Erro ao buscar CEP:", err);
+        setCepError("Erro de conexão ao buscar CEP.");
+      } finally {
+        setIsSearchingCep(false);
       }
     }
   };
@@ -509,47 +647,24 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
     return re.test(email);
   };
 
-  const handleBookingSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    // Validation
-    if (!selectedDate) {
-      alert("Por favor, selecione uma data para sua produção.");
-      return;
-    }
-    if (!selectedTimeSlot) {
-      alert("Por favor, escolha uma faixa de horário.");
-      return;
-    }
-    if (!validateEmail(clientEmail)) {
-      setEmailError("Insira um endereço de e-mail autêntico.");
-      return;
-    }
-    if (clientPhone.replace(/\D/g, "").length < 10) {
-      setPhoneError("Insira um número de telefone completo.");
-      return;
-    }
-    if (!clientCpfCnpj || clientCpfCnpj.replace(/\D/g, "").length < 11) {
-      alert("Por favor, insira um CPF ou CNPJ válido para o contrato de locação.");
-      return;
-    }
-    if (!clientCep || clientCep.replace(/\D/g, "").length < 8) {
-      alert("Por favor, insira um CEP válido para o contrato de locação.");
-      return;
-    }
-    if (!clientAddress || !clientAddressNum || !clientAddressBairro || !clientAddressCidade || !clientAddressUF) {
-      alert("Por favor, preencha o endereço completo para o contrato de locação.");
-      return;
-    }
-    if (!acceptedRules) {
-      alert("Você precisa ler e aceitar os termos do Contrato de Locação e as Regras do Espaço para realizar o agendamento.");
-      return;
-    }
-
+  const executeFinalizeBooking = async (userId: string) => {
     setIsSubmitting(true);
-
     try {
       const code = `TR-${Math.floor(10000 + Math.random() * 90000)}`;
+
+      const cleanClientName = sanitizeText(clientName, 100);
+      const cleanClientEmail = sanitizeEmail(clientEmail);
+      const cleanClientPhone = sanitizePhone(clientPhone);
+      const cleanCpfCnpj = sanitizeCpfCnpj(clientCpfCnpj);
+      const cleanNotes = sanitizeText(projectNotes, 1000);
+      const cleanCep = sanitizeText(clientCep, 15);
+      const cleanAddress = sanitizeText(clientAddress, 200);
+      const cleanAddressNum = sanitizeText(clientAddressNum, 20);
+      const cleanAddressComp = sanitizeText(clientAddressComp, 100);
+      const cleanAddressBairro = sanitizeText(clientAddressBairro, 100);
+      const cleanAddressCidade = sanitizeText(clientAddressCidade, 100);
+      const cleanAddressUF = sanitizeText(clientAddressUF, 10);
+
       const newBooking: Booking = {
         id: code,
         spaceId: currentSpace.id,
@@ -557,24 +672,24 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
         date: selectedDate,
         timeSlot: selectedTimeSlot,
         durationHours: durationHours,
-        clientName: clientName,
-        clientEmail: clientEmail,
-        clientPhone: clientPhone,
+        clientName: cleanClientName,
+        clientEmail: cleanClientEmail,
+        clientPhone: cleanClientPhone,
         selectedEquipIds: [...selectedEquipIds],
-        notes: projectNotes,
+        notes: cleanNotes,
         totalPrice: pricing.total,
         status: "Simulada",
         createdAt: new Date().toLocaleDateString("pt-BR") + " " + new Date().toLocaleTimeString("pt-BR", {hour: '2-digit', minute:'2-digit'}),
         depositPaid: false,
-        userId: auth.currentUser?.uid || "",
-        clientCpfCnpj,
-        clientCep,
-        clientAddress,
-        clientAddressNum,
-        clientAddressComp,
-        clientAddressBairro,
-        clientAddressCidade,
-        clientAddressUF,
+        userId: userId,
+        clientCpfCnpj: cleanCpfCnpj,
+        clientCep: cleanCep,
+        clientAddress: cleanAddress,
+        clientAddressNum: cleanAddressNum,
+        clientAddressComp: cleanAddressComp,
+        clientAddressBairro: cleanAddressBairro,
+        clientAddressCidade: cleanAddressCidade,
+        clientAddressUF: cleanAddressUF,
         acceptedRules
       };
 
@@ -582,12 +697,18 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
       const updated = [newBooking, ...localBookings];
       saveBookingsToLocal(updated);
 
-      // 2. Save to Firestore (Real persistence)
-      await setDoc(doc(db, "bookings", code), cleanFirestoreData({
-        ...newBooking
-      }));
+      // 2. Save to Firestore
+      await setDoc(doc(db, "bookings", code), cleanFirestoreData({ ...newBooking }), { merge: true });
 
-      // Log reservation creation activity event
+      // Save or update User doc in Firestore
+      await setDoc(doc(db, "users", userId), cleanFirestoreData({
+        name: cleanClientName,
+        email: cleanClientEmail,
+        phone: cleanClientPhone,
+        role: "client",
+        updatedAt: new Date().toISOString()
+      }), { merge: true });
+
       logActivityEvent(
         'booking_created', 
         newBooking.clientEmail, 
@@ -595,9 +716,23 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
       );
 
       // 3. Generate PDF client-side
-      const pdfBase64 = generatePDFOfBooking(newBooking, true); // silent base64 generation
+      const pdfBase64 = generatePDFOfBooking(newBooking, true);
 
-      // 4. Trigger Node.js Endpoint to send beautifully structured e-mails with PDF attached using Hostinger
+      // 4. Trigger welcome & confirmation emails
+      try {
+        await fetch("/api/send-welcome-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            clientEmail: newBooking.clientEmail,
+            clientName: newBooking.clientName,
+            clientPhone: newBooking.clientPhone
+          })
+        });
+      } catch (err) {
+        console.error("Error sending welcome email:", err);
+      }
+
       try {
         await fetch("/api/send-booking-email", {
           method: "POST",
@@ -641,20 +776,212 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
       setClientAddressUF("");
       setAcceptedRules(false);
 
-      // Trigger standard local download
+      // Trigger local PDF download
       generatePDFOfBooking(newBooking, false);
-      sendToWhatsApp(newBooking);
+
+      // Open Customer Panel for instant access to PDF, WhatsApp and InfinitePay deposit
+      window.dispatchEvent(new CustomEvent("open-customer-panel", { detail: { booking: newBooking } }));
     } catch (e: any) {
-      console.error("Error submitting booking:", e);
+      console.error("Error finalizing booking:", e);
       setIsSubmitting(false);
-      alert("Erro ao registrar orçamento: " + e.message);
+      alert("Erro ao registrar agendamento: " + e.message);
     }
   };
 
-  const handleCancelBooking = (id: string) => {
-    if (window.confirm(`Tem certeza que deseja cancelar sua reserva ${id}?`)) {
+  const handleBookingSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // Validation against injection patterns
+    if (
+      isSuspiciousInput(clientName) || 
+      isSuspiciousInput(projectNotes) || 
+      isSuspiciousInput(clientAddress) || 
+      isSuspiciousInput(clientEmail)
+    ) {
+      alert("Entrada inválida detectada. Por favor, remova caracteres ou scripts suspeitos.");
+      return;
+    }
+
+    if (!selectedDate) {
+      alert("Por favor, selecione uma data para sua produção.");
+      return;
+    }
+    if (!selectedTimeSlot) {
+      alert("Por favor, escolha uma faixa de horário.");
+      return;
+    }
+    if (!validateEmail(clientEmail)) {
+      setEmailError("Insira um endereço de e-mail autêntico.");
+      return;
+    }
+    if (clientPhone.replace(/\D/g, "").length < 10) {
+      setPhoneError("Insira um número de telefone completo.");
+      return;
+    }
+    if (!clientCpfCnpj || clientCpfCnpj.replace(/\D/g, "").length < 11) {
+      alert("Por favor, insira um CPF ou CNPJ válido para o contrato de locação.");
+      return;
+    }
+    if (!clientCep || clientCep.replace(/\D/g, "").length < 8) {
+      alert("Por favor, insira um CEP válido para o contrato de locação.");
+      return;
+    }
+    if (!clientAddress || !clientAddressNum || !clientAddressBairro || !clientAddressCidade || !clientAddressUF) {
+      alert("Por favor, preencha o endereço completo para o contrato de locação.");
+      return;
+    }
+    if (!acceptedRules) {
+      alert("Você precisa ler e aceitar os termos do Contrato de Locação e as Regras do Espaço para realizar o agendamento.");
+      return;
+    }
+
+    // Require user registration / authentication before booking
+    if (!auth.currentUser) {
+      setAuthPassword("");
+      setAuthConfirmPassword("");
+      setShowPassword(false);
+      setShowConfirmPassword(false);
+      setAuthError("");
+      setAuthSuccess("");
+      setIsLoggingIn(false);
+      setShowAuthModal(true);
+      return;
+    }
+
+    await executeFinalizeBooking(auth.currentUser.uid);
+  };
+
+  const handleForgotPasswordInBookingModal = async () => {
+    const cleanEmail = sanitizeEmail(clientEmail);
+    if (!cleanEmail) {
+      setAuthError("Informe um e-mail válido.");
+      return;
+    }
+    setAuthLoading(true);
+    setAuthError("");
+    setAuthSuccess("");
+    try {
+      await sendPasswordResetEmail(auth, cleanEmail);
+      setAuthSuccess(`E-mail de redefinição enviado para ${cleanEmail}! Verifique sua caixa de entrada ou spam.`);
+    } catch (err: any) {
+      console.error("Error sending reset password email:", err);
+      setAuthError("Não foi possível enviar o e-mail de redefinição. Verifique se o e-mail está correto.");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleAuthModalSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError("");
+    setAuthSuccess("");
+    setAuthLoading(true);
+
+    const cleanEmail = sanitizeEmail(clientEmail);
+
+    try {
+      let uid = "";
+      if (isLoggingIn) {
+        if (!authPassword) {
+          setAuthError("Digite sua senha para continuar.");
+          setAuthLoading(false);
+          return;
+        }
+        const cred = await signInWithEmailAndPassword(auth, cleanEmail, authPassword);
+        uid = cred.user.uid;
+      } else {
+        if (!authPassword || authPassword.length < 6) {
+          setAuthError("A senha precisa ter no mínimo 6 caracteres.");
+          setAuthLoading(false);
+          return;
+        }
+        if (authPassword !== authConfirmPassword) {
+          setAuthError("As senhas digitadas não coincidem. Por favor, verifique.");
+          setAuthLoading(false);
+          return;
+        }
+
+        // 1. Query Firestore first by email to check user existence
+        const userQuery = query(collection(db, "users"), where("email", "==", cleanEmail));
+        const existingUserDocs = await getDocs(userQuery);
+
+        if (!existingUserDocs.empty) {
+          setIsLoggingIn(true);
+          setAuthError(`O e-mail (${cleanEmail}) já está cadastrado. Digite sua senha para acessar ou clique em 'Esqueci minha senha' para redefini-la.`);
+          setAuthLoading(false);
+          return;
+        }
+
+        try {
+          const cred = await createUserWithEmailAndPassword(auth, cleanEmail, authPassword);
+          uid = cred.user.uid;
+        } catch (err: any) {
+          if (err.code === "auth/email-already-in-use") {
+            // Auth exists but no Firestore doc, attempt sign in to complete booking
+            try {
+              const loginCred = await signInWithEmailAndPassword(auth, cleanEmail, authPassword);
+              uid = loginCred.user.uid;
+            } catch (loginErr: any) {
+              setIsLoggingIn(true);
+              setAuthError(`O e-mail (${cleanEmail}) já está cadastrado no sistema. Digite sua senha para acessar ou clique em 'Esqueci minha senha' para redefini-la.`);
+              setAuthLoading(false);
+              return;
+            }
+          } else {
+            throw err;
+          }
+        }
+      }
+
+      setShowAuthModal(false);
+      setAuthPassword("");
+      await executeFinalizeBooking(uid);
+    } catch (err: any) {
+      console.error("Auth modal error:", err);
+      if (err.code === "auth/wrong-password" || err.code === "auth/invalid-credential") {
+        setAuthError("Senha incorreta. Verifique a senha e tente novamente ou clique em 'Esqueci minha senha'.");
+      } else {
+        setAuthError(err.message || "Erro de autenticação. Verifique sua senha e tente novamente.");
+      }
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleCancelBooking = async (id: string) => {
+    const bookingToCancel = activeBookings.find(b => b.id === id) || localBookings.find(b => b.id === id);
+    if (window.confirm(`Tem certeza que deseja cancelar a reserva #${id}?`)) {
       const filtered = localBookings.filter(b => b.id !== id);
       saveBookingsToLocal(filtered);
+
+      try {
+        await deleteDoc(doc(db, "bookings", id));
+      } catch (err) {
+        console.error("Erro ao excluir reserva no Firestore:", err);
+      }
+
+      if (bookingToCancel) {
+        try {
+          await fetch('/api/send-cancelled-booking-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              bookingId: bookingToCancel.id,
+              clientName: bookingToCancel.clientName,
+              clientEmail: bookingToCancel.clientEmail,
+              clientPhone: bookingToCancel.clientPhone,
+              spaceName: bookingToCancel.spaceName,
+              date: bookingToCancel.date,
+              timeSlot: bookingToCancel.timeSlot,
+              totalPrice: bookingToCancel.totalPrice,
+              depositPaid: bookingToCancel.depositPaid,
+              cancelledBy: userRole === 'admin' ? 'Administrador' : 'Cliente / Painel do Usuário'
+            })
+          });
+        } catch (e) {
+          console.error("Erro ao enviar e-mail de cancelamento ao servidor:", e);
+        }
+      }
     }
   };
 
@@ -963,9 +1290,21 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
                   </div>
 
                   <div>
-                    <label className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest block mb-1.5">
-                      CEP
-                    </label>
+                    <div className="flex justify-between items-center mb-1.5">
+                      <label className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest block">
+                        CEP
+                      </label>
+                      {isSearchingCep && (
+                        <span className="text-[9px] font-mono text-amber-400 animate-pulse flex items-center gap-1">
+                          ⚡ Buscando endereço...
+                        </span>
+                      )}
+                      {!isSearchingCep && clientAddress && clientAddressBairro && (
+                        <span className="text-[9px] font-mono text-emerald-400 flex items-center gap-0.5">
+                          ✓ Auto-preenchido
+                        </span>
+                      )}
+                    </div>
                     <input
                       type="text"
                       required
@@ -974,6 +1313,9 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
                       onChange={(e) => handleCepChange(e.target.value)}
                       className="w-full bg-stone-950 border border-white/10 rounded px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-brand-red font-mono"
                     />
+                    {cepError && (
+                      <p className="text-[10px] font-mono text-red-400 mt-1">{cepError}</p>
+                    )}
                   </div>
 
                   <div>
@@ -997,6 +1339,7 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
                       Número
                     </label>
                     <input
+                      ref={numberInputRef}
                       type="text"
                       required
                       placeholder="123"
@@ -1221,20 +1564,52 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
 
             </div>
 
-            {/* My Active Schedules Section (Retains local persistence) */}
+            {/* Active Schedules Section */}
             <div className="bg-stone-900 border border-white/10 rounded-sm p-4 sm:p-5">
               <h4 className="font-display font-bold text-xs uppercase tracking-[0.2em] text-zinc-300 border-b border-white/5 pb-2 mb-3 flex items-center justify-between">
-                <span>Minhas Reservas Ativas ({localBookings.length})</span>
-                {localBookings.length > 0 && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
+                {!currentUser ? (
+                  <span>Reservas Ativas</span>
+                ) : userRole === "admin" ? (
+                  <span className="flex items-center gap-1.5 text-red-400">
+                    <Shield size={12} />
+                    Todas as Reservas ({activeBookings.length})
+                  </span>
+                ) : (
+                  <span>Minhas Reservas Ativas ({activeBookings.length})</span>
+                )}
+
+                {currentUser && activeBookings.length > 0 && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                )}
               </h4>
 
-              {localBookings.length === 0 ? (
+              {!currentUser ? (
+                <div className="py-6 px-2 text-center space-y-3">
+                  <div className="w-10 h-10 rounded-full bg-stone-800 border border-white/10 flex items-center justify-center mx-auto text-zinc-400">
+                    <Lock size={18} />
+                  </div>
+                  <p className="text-zinc-400 text-xs font-mono leading-relaxed">
+                    Você não está conectado. Acesse sua conta para visualizar e gerenciar suas locações.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => window.dispatchEvent(new CustomEvent("open-customer-panel"))}
+                    className="bg-brand-red hover:bg-red-700 text-white font-mono text-[10px] uppercase font-bold px-4 py-2 rounded transition-all cursor-pointer inline-flex items-center gap-1.5 shadow"
+                  >
+                    <User size={12} /> Entrar / Cadastrar
+                  </button>
+                </div>
+              ) : loadingBookings ? (
+                <div className="py-6 text-center text-zinc-500 text-xs font-mono animate-pulse">
+                  Carregando reservas ativas...
+                </div>
+              ) : activeBookings.length === 0 ? (
                 <div className="py-6 text-center text-zinc-500 text-xs font-mono font-light leading-relaxed">
-                  Não há locações agendadas neste dispositivo.
+                  Nenhuma locação agendada encontrada para sua conta.
                 </div>
               ) : (
                 <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
-                  {localBookings.map((b) => (
+                  {activeBookings.map((b) => (
                     <div key={b.id} className="p-3 bg-stone-950 rounded-sm border border-white/5 flex flex-col justify-between hover:border-zinc-700/60 transition-colors">
                       <div className="flex justify-between items-start border-b border-white/5 pb-1.5 mb-2">
                         <div>
@@ -1252,6 +1627,9 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
 
                       <div className="space-y-1 font-mono text-[10px] text-zinc-400 mb-2">
                         <p className="font-sans text-stone-300 text-xs font-bold truncate">↳ {b.spaceName}</p>
+                        {userRole === 'admin' && b.clientName && (
+                          <p className="text-amber-400 font-bold truncate">👤 {b.clientName} ({b.clientPhone || b.clientEmail})</p>
+                        )}
                         <p>Slot: {b.date} • {b.timeSlot}</p>
                         <p>Tempo: {b.durationHours}h | Total: R$ {b.totalPrice}</p>
                       </div>
@@ -1386,14 +1764,35 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
               <div className="flex flex-col xl:flex-row gap-2 mt-4">
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
+                    if (!submittedBooking) return;
+                    const booking = submittedBooking;
+                    try {
+                      const res = await fetch("/api/payment/infinitepay", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          bookingId: booking.id,
+                          amount: 100,
+                          clientName: booking.clientName,
+                          clientEmail: booking.clientEmail,
+                          clientPhone: booking.clientPhone,
+                          customHandle: "daluz_jef"
+                        })
+                      });
+                      const data = await res.json();
+                      const checkoutUrl = data.checkoutUrl || `https://infinitepay.io/pay/daluz_jef?amount=100.00&metadata=${booking.id}`;
+                      window.open(checkoutUrl, "_blank");
+                    } catch (err) {
+                      window.open(`https://infinitepay.io/pay/daluz_jef?amount=100.00&metadata=${booking.id}`, "_blank");
+                    }
+                    window.dispatchEvent(new CustomEvent("open-customer-panel", { detail: { booking } }));
                     setSubmittedBooking(null);
-                    window.dispatchEvent(new CustomEvent("open-customer-panel", { detail: { booking: submittedBooking } }));
                   }}
                   className="w-full flex items-center justify-center gap-1.5 bg-brand-red hover:bg-red-700 text-white font-mono text-[10px] sm:text-xs uppercase tracking-widest py-3.5 rounded-sm transition-all duration-300 cursor-pointer shadow active:scale-95 font-bold"
                 >
                   <CreditCard size={13} />
-                  Pagar Sinal R$100 via InfinitePay
+                  Pagar Sinal R$100 (@daluz_jef)
                 </button>
                 <button
                   type="button"
@@ -1413,6 +1812,186 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
                 </button>
               </div>
 
+            </motion.div>
+          </motion.div>
+        )}
+
+        {showAuthModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/95 backdrop-blur-md z-50 flex items-center justify-center p-4 font-sans"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 10 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 10 }}
+              className="bg-[#111] border border-stone-800 p-6 sm:p-8 rounded-sm max-w-md w-full relative shadow-2xl space-y-5"
+            >
+              <div className="flex justify-between items-start border-b border-white/10 pb-4">
+                <div>
+                  <span className="font-mono text-[9px] bg-brand-red/20 text-brand-red border border-brand-red/30 px-2 py-0.5 rounded font-bold uppercase">
+                    Etapa Obrigatória de Segurança
+                  </span>
+                  <h3 className="font-display font-bold text-lg text-white mt-1">
+                    {isLoggingIn ? "🔐 Entrar na Sua Conta" : "🔐 Criar Seu Perfil de Usuário"}
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAuthModal(false)}
+                  className="text-zinc-500 hover:text-white font-mono text-xs uppercase"
+                >
+                  [X]
+                </button>
+              </div>
+
+              <p className="text-zinc-300 text-xs leading-relaxed font-sans">
+                {isLoggingIn 
+                  ? "Sua conta já existe! Digite sua senha para acessar seu Painel do Cliente e confirmar a reserva." 
+                  : "Para confirmar seu agendamento no Estúdio Triângulo e acessar seu Painel do Cliente (com o contrato PDF, canal do WhatsApp e opção de pagamento do sinal de R$ 100,00), crie uma senha para seu e-mail:"}
+              </p>
+
+              <form onSubmit={handleAuthModalSubmit} className="space-y-4">
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="block text-zinc-400 text-[10px] uppercase font-mono">
+                      E-mail do Cadastro:
+                    </label>
+                  </div>
+                  <input
+                    type="email"
+                    required
+                    value={clientEmail}
+                    onChange={(e) => setClientEmail(e.target.value)}
+                    placeholder="seu.email@exemplo.com"
+                    className="w-full bg-stone-900 border border-stone-700 text-white font-mono text-xs px-3 py-2.5 rounded focus:border-brand-red outline-none"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="block text-zinc-300 text-[10px] uppercase font-mono font-bold">
+                      {isLoggingIn ? "Sua Senha de Acesso:" : "Crie Uma Senha (mínimo 6 caracteres):"}
+                    </label>
+                    {isLoggingIn && (
+                      <button
+                        type="button"
+                        onClick={handleForgotPasswordInBookingModal}
+                        disabled={authLoading}
+                        className="text-[10px] font-mono text-amber-400 hover:text-amber-300 underline cursor-pointer"
+                      >
+                        Esqueci minha senha
+                      </button>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      required
+                      minLength={6}
+                      value={authPassword}
+                      onChange={(e) => setAuthPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full bg-stone-900 border border-stone-700 text-white font-mono text-xs pl-3 pr-10 py-2.5 rounded focus:border-brand-red outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white p-1 cursor-pointer transition-colors"
+                      title={showPassword ? "Ocultar senha" : "Ver senha"}
+                    >
+                      {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
+                  </div>
+                </div>
+
+                {!isLoggingIn && (
+                  <div>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="block text-zinc-300 text-[10px] uppercase font-mono font-bold">
+                        Confirmar Senha:
+                      </label>
+                    </div>
+                    <div className="relative">
+                      <input
+                        type={showConfirmPassword ? "text" : "password"}
+                        required
+                        minLength={6}
+                        value={authConfirmPassword}
+                        onChange={(e) => setAuthConfirmPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className={`w-full bg-stone-900 border text-white font-mono text-xs pl-3 pr-10 py-2.5 rounded outline-none transition-colors ${
+                          authConfirmPassword && authConfirmPassword !== authPassword
+                            ? "border-red-500 focus:border-red-500"
+                            : "border-stone-700 focus:border-brand-red"
+                        }`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white p-1 cursor-pointer transition-colors"
+                        title={showConfirmPassword ? "Ocultar senha" : "Ver senha"}
+                      >
+                        {showConfirmPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                      </button>
+                    </div>
+                    {authConfirmPassword && authConfirmPassword !== authPassword && (
+                      <p className="text-red-400 text-[10px] font-mono mt-1">
+                        ⚠️ As senhas não coincidem.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {authSuccess && (
+                  <div className="bg-emerald-950/80 border border-emerald-500/30 text-emerald-300 text-[11px] p-3 rounded font-mono leading-relaxed">
+                    ✓ {authSuccess}
+                  </div>
+                )}
+
+                {authError && (
+                  <div className="bg-red-950/80 border border-red-500/30 text-red-300 text-[11px] p-3 rounded font-mono leading-relaxed space-y-2">
+                    <p>{authError}</p>
+                    {isLoggingIn && (
+                      <button
+                        type="button"
+                        onClick={handleForgotPasswordInBookingModal}
+                        disabled={authLoading}
+                        className="inline-block bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 px-2.5 py-1 rounded text-[10px] font-mono font-bold transition-all cursor-pointer"
+                      >
+                        📧 Receber link para redefinir senha no e-mail
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={authLoading}
+                  className="w-full bg-brand-red hover:bg-red-700 text-white font-mono text-xs uppercase font-bold py-3.5 rounded transition-all cursor-pointer shadow-lg disabled:opacity-50"
+                >
+                  {authLoading 
+                    ? "Processando..." 
+                    : (isLoggingIn ? "Entrar & Confirmar Reserva" : "Criar Minha Conta & Confirmar Reserva")}
+                </button>
+              </form>
+
+              <div className="pt-2 border-t border-white/5 text-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsLoggingIn(!isLoggingIn);
+                    setAuthError("");
+                  }}
+                  className="text-zinc-400 hover:text-white text-xs font-mono underline transition-colors"
+                >
+                  {isLoggingIn 
+                    ? "Primeira vez? Clique para Criar Conta" 
+                    : "Já possui uma conta no site? Clique para Entrar"}
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}

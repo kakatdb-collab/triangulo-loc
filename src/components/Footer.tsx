@@ -3,10 +3,30 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Mail, Phone, MapPin, Clock, ArrowUp, Instagram, Youtube, Compass } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Mail, Phone, MapPin, Clock, ArrowUp, Instagram, Youtube, Compass, Star } from "lucide-react";
 import StudioMap from "./StudioMap";
+import { db, doc, onSnapshot } from "../lib/firebase";
+import { DEFAULT_MARKETING_SETTINGS, trackConversionEvent } from "../lib/analytics";
 
 export default function Footer() {
+  const [reviewUrl, setReviewUrl] = useState<string>(DEFAULT_MARKETING_SETTINGS.googleBusinessReviewUrl!);
+
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, "site_settings", "integrations"), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        const url = data.googleBusinessReviewUrl;
+        if (url && !url.includes("ChIJ31y92A1YzpQRx94iO2qP_mI")) {
+          setReviewUrl(url);
+        } else {
+          setReviewUrl(DEFAULT_MARKETING_SETTINGS.googleBusinessReviewUrl!);
+        }
+      }
+    });
+    return () => unsub();
+  }, []);
+
   const handleScrollToTop = () => {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -66,6 +86,28 @@ export default function Footer() {
                 className="w-9 h-9 rounded-sm bg-stone-900 border border-white/5 flex items-center justify-center text-zinc-400 hover:text-white hover:border-[#d93838] hover:bg-[#d93838]/5 transition-all duration-300"
               >
                 <Compass size={14} />
+              </a>
+            </div>
+
+            {/* Google Meu Negócio Badge */}
+            <div className="pt-2">
+              <a
+                href={reviewUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => trackConversionEvent("google_review_footer_click")}
+                className="inline-flex items-center gap-2 bg-stone-900 hover:bg-stone-800 border border-amber-500/30 hover:border-amber-500/60 p-2.5 rounded text-xs transition-all group cursor-pointer"
+              >
+                <div className="flex text-amber-400">
+                  <Star size={13} className="fill-amber-400" />
+                  <Star size={13} className="fill-amber-400" />
+                  <Star size={13} className="fill-amber-400" />
+                  <Star size={13} className="fill-amber-400" />
+                  <Star size={13} className="fill-amber-400" />
+                </div>
+                <span className="font-mono text-[10px] uppercase font-bold text-zinc-300 group-hover:text-amber-400 transition-colors">
+                  Google Meu Negócio • 5.0 Estrelas
+                </span>
               </a>
             </div>
           </div>

@@ -25,7 +25,7 @@ export const STUDIO_SPACES: StudioSpace[] = [
     halfDayRate: 400,
     fullDayRate: 700,
     capacity: 15,
-    area: "120m²",
+    area: "90m²",
     features: [
       "Trilhos aéreos",
       "3 Tochas de estudio Godox com modificadores.",

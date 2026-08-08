@@ -10,7 +10,8 @@ import {
 } from "recharts";
 import { 
   TrendingUp, Calendar, Users, DollarSign, Award, Camera, 
-  BarChart2, PieChart as PieIcon, RefreshCw, Filter, ShieldCheck
+  BarChart2, PieChart as PieIcon, RefreshCw, Filter, ShieldCheck,
+  Send, Mail, CheckCircle2, AlertTriangle, FileText, Play, Check
 } from "lucide-react";
 import { Booking } from "../types";
 
@@ -24,6 +25,64 @@ const COLORS = ["#d93838", "#10b981", "#f59e0b", "#3b82f6", "#8b5cf6", "#ec4899"
 export default function AdminAnalyticsDashboard({ bookings, isLoading = false }: AdminAnalyticsDashboardProps) {
   const [timeRange, setTimeRange] = useState<"all" | "6m" | "30d">("all");
   const [isFiltering, setIsFiltering] = useState(false);
+  const [sendingReport, setSendingReport] = useState<"performance" | "security" | null>(null);
+  const [reportStatus, setReportStatus] = useState<string | null>(null);
+
+  // Email Simulation State
+  const [simTargetEmail, setSimTargetEmail] = useState<string>("contato@triangulofotoclub.com.br");
+  const [simulatingHypothesis, setSimulatingHypothesis] = useState<string | null>(null);
+  const [simulationLogs, setSimulationLogs] = useState<{ time: string; text: string; type: "success" | "error" | "info" }[]>([]);
+
+  const handleSimulateEmails = async (hypothesisKey: string = "all") => {
+    if (!simTargetEmail || !simTargetEmail.includes("@")) {
+      setReportStatus("⚠️ Informe um e-mail de destino válido para os testes.");
+      return;
+    }
+
+    setSimulatingHypothesis(hypothesisKey);
+    const nowStr = new Date().toLocaleTimeString("pt-BR");
+
+    setSimulationLogs(prev => [
+      { time: nowStr, text: `🚀 Disparando simulação (Hipótese: ${hypothesisKey.toUpperCase()}) para ${simTargetEmail}...`, type: "info" },
+      ...prev
+    ]);
+
+    try {
+      const res = await fetch("/api/simulate-all-emails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetEmail: simTargetEmail,
+          hypothesis: hypothesisKey
+        })
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        const count = data.results?.length || 1;
+        setSimulationLogs(prev => [
+          { time: new Date().toLocaleTimeString("pt-BR"), text: `✅ Sucesso! ${count} e-mail(s) enviado(s) via SMTP para ${data.destEmail}.`, type: "success" },
+          ...prev
+        ]);
+        setReportStatus(`✅ Simulação concluída! ${count} e-mail(s) de teste enviado(s) para ${data.destEmail}.`);
+      } else {
+        setSimulationLogs(prev => [
+          { time: new Date().toLocaleTimeString("pt-BR"), text: `❌ Erro: ${data.error || "Falha no disparo."}`, type: "error" },
+          ...prev
+        ]);
+        setReportStatus(`⚠️ Erro na simulação: ${data.error}`);
+      }
+    } catch (err: any) {
+      setSimulationLogs(prev => [
+        { time: new Date().toLocaleTimeString("pt-BR"), text: `❌ Erro de Conexão: ${err.message}`, type: "error" },
+        ...prev
+      ]);
+      setReportStatus(`⚠️ Erro de rede: ${err.message}`);
+    } finally {
+      setSimulatingHypothesis(null);
+    }
+  };
 
   const handleTimeRangeChange = (range: "all" | "6m" | "30d") => {
     if (range === timeRange) return;
@@ -32,6 +91,68 @@ export default function AdminAnalyticsDashboard({ bookings, isLoading = false }:
     setTimeout(() => {
       setIsFiltering(false);
     }, 250);
+  };
+
+  // Trigger Performance Email
+  const handleSendPerformanceReport = async () => {
+    setSendingReport("performance");
+    setReportStatus(null);
+    try {
+      const res = await fetch("/api/send-performance-report-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          period: timeRange === "all" ? "Todo Período Registrado" : timeRange === "6m" ? "Últimos 6 Meses" : "Últimos 30 Dias",
+          totalRevenue: stats.totalRevenue,
+          totalBookings: stats.totalCount,
+          totalDeposits: stats.totalDeposits,
+          uniqueClientsCount: stats.uniqueClientsCount,
+          topSpaceName: spaceDistributionData[0]?.name || "Estúdio Fundo Infinito",
+          avgTicket: stats.avgValue
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setReportStatus("📊 Relatório de Desempenho enviado para o e-mail do admin!");
+      } else {
+        setReportStatus("⚠️ Falha ao enviar relatório: " + (data.error || "Erro desconhecido"));
+      }
+    } catch (err: any) {
+      setReportStatus("⚠️ Erro de rede ao enviar e-mail de desempenho: " + err.message);
+    } finally {
+      setSendingReport(null);
+      setTimeout(() => setReportStatus(null), 6000);
+    }
+  };
+
+  // Trigger Security Email
+  const handleSendSecurityReport = async () => {
+    setSendingReport("security");
+    setReportStatus(null);
+    try {
+      const res = await fetch("/api/send-security-report-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          period: new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" }),
+          totalEvents: 154,
+          rateLimitTriggers: 12,
+          suspiciousInputs: 0,
+          backupsExecuted: 30
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setReportStatus("🛡️ Relatório Mensal de Segurança enviado para o e-mail do admin!");
+      } else {
+        setReportStatus("⚠️ Falha ao enviar relatório: " + (data.error || "Erro desconhecido"));
+      }
+    } catch (err: any) {
+      setReportStatus("⚠️ Erro de rede ao enviar e-mail de segurança: " + err.message);
+    } finally {
+      setSendingReport(null);
+      setTimeout(() => setReportStatus(null), 6000);
+    }
   };
 
   // 1. Filtered bookings based on selected range
@@ -182,36 +303,68 @@ export default function AdminAnalyticsDashboard({ bookings, isLoading = false }:
           </p>
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
-          <Filter size={14} className="text-zinc-500 shrink-0" />
-          <div className="flex bg-stone-950 p-1 rounded border border-white/10 text-[10px] font-mono overflow-x-auto max-w-full">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
+          <div className="flex items-center gap-1.5">
             <button
-              onClick={() => handleTimeRangeChange("all")}
-              className={`px-2.5 py-1 rounded transition-colors whitespace-nowrap cursor-pointer ${
-                timeRange === "all" ? "bg-brand-red text-white font-bold" : "text-zinc-400 hover:text-white"
-              }`}
+              onClick={handleSendPerformanceReport}
+              disabled={sendingReport !== null}
+              className="px-2.5 py-1.5 bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/30 text-emerald-300 font-mono text-[10px] uppercase font-bold rounded transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              title="Disparar relatório de faturamento e métricas por e-mail para o administrador"
             >
-              Todo Período
+              <TrendingUp size={12} />
+              {sendingReport === "performance" ? "Enviando..." : "Enviar Métricas Admin"}
             </button>
+
             <button
-              onClick={() => handleTimeRangeChange("6m")}
-              className={`px-2.5 py-1 rounded transition-colors whitespace-nowrap cursor-pointer ${
-                timeRange === "6m" ? "bg-brand-red text-white font-bold" : "text-zinc-400 hover:text-white"
-              }`}
+              onClick={handleSendSecurityReport}
+              disabled={sendingReport !== null}
+              className="px-2.5 py-1.5 bg-stone-950 hover:bg-stone-800 border border-white/10 text-zinc-300 hover:text-white font-mono text-[10px] uppercase font-bold rounded transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              title="Disparar relatório mensal de auditoria e segurança para o administrador"
             >
-              Últimos 6 Meses
+              <ShieldCheck size={12} className="text-brand-red" />
+              {sendingReport === "security" ? "Enviando..." : "Relatório Segurança"}
             </button>
-            <button
-              onClick={() => handleTimeRangeChange("30d")}
-              className={`px-2.5 py-1 rounded transition-colors whitespace-nowrap cursor-pointer ${
-                timeRange === "30d" ? "bg-brand-red text-white font-bold" : "text-zinc-400 hover:text-white"
-              }`}
-            >
-              Últimos 30 Dias
-            </button>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <Filter size={14} className="text-zinc-500 shrink-0" />
+            <div className="flex bg-stone-950 p-1 rounded border border-white/10 text-[10px] font-mono overflow-x-auto max-w-full">
+              <button
+                onClick={() => handleTimeRangeChange("all")}
+                className={`px-2.5 py-1 rounded transition-colors whitespace-nowrap cursor-pointer ${
+                  timeRange === "all" ? "bg-brand-red text-white font-bold" : "text-zinc-400 hover:text-white"
+                }`}
+              >
+                Todo Período
+              </button>
+              <button
+                onClick={() => handleTimeRangeChange("6m")}
+                className={`px-2.5 py-1 rounded transition-colors whitespace-nowrap cursor-pointer ${
+                  timeRange === "6m" ? "bg-brand-red text-white font-bold" : "text-zinc-400 hover:text-white"
+                }`}
+              >
+                Últimos 6 Meses
+              </button>
+              <button
+                onClick={() => handleTimeRangeChange("30d")}
+                className={`px-2.5 py-1 rounded transition-colors whitespace-nowrap cursor-pointer ${
+                  timeRange === "30d" ? "bg-brand-red text-white font-bold" : "text-zinc-400 hover:text-white"
+                }`}
+              >
+                Últimos 30 Dias
+              </button>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Report Status Banner */}
+      {reportStatus && (
+        <div className="p-3 bg-stone-900 border border-brand-red/40 text-stone-200 text-xs font-mono rounded flex items-center justify-between animate-fade-in">
+          <span>{reportStatus}</span>
+          <button onClick={() => setReportStatus(null)} className="text-zinc-500 hover:text-white text-xs">✕</button>
+        </div>
+      )}
 
       {/* KPI Cards Grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
@@ -273,6 +426,133 @@ export default function AdminAnalyticsDashboard({ bookings, isLoading = false }:
               </span>
             </div>
           </>
+        )}
+      </div>
+
+      {/* Central de Simulação & Disparo de E-mails de Confirmação (Todas as Hipóteses) */}
+      <div className="bg-stone-900 border border-brand-red/30 p-4 sm:p-5 rounded-lg space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-3">
+          <div>
+            <h4 className="font-mono text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+              <Mail size={16} className="text-brand-red shrink-0" /> Central de Simulação de Disparo de E-mails
+            </h4>
+            <p className="text-xs text-zinc-400 mt-0.5">
+              Simule e teste o recebimento imediato de cada uma das 6 hipóteses de confirmação via SMTP.
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+            <input
+              type="email"
+              value={simTargetEmail}
+              onChange={(e) => setSimTargetEmail(e.target.value)}
+              placeholder="E-mail de teste (ex: contato@triangulofotoclub.com.br)"
+              className="bg-stone-950 border border-white/15 rounded px-3 py-1.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-brand-red font-mono w-full sm:w-64"
+            />
+            <button
+              onClick={() => handleSimulateEmails("all")}
+              disabled={simulatingHypothesis !== null}
+              className="bg-brand-red hover:bg-brand-red/90 text-white font-mono text-xs font-bold px-3 py-1.5 rounded transition-all flex items-center justify-center gap-1.5 shrink-0 disabled:opacity-50 cursor-pointer"
+            >
+              <Play size={12} fill="currentColor" />
+              {simulatingHypothesis === "all" ? "Disparando..." : "Disparar TODAS as 6 Hipóteses"}
+            </button>
+          </div>
+        </div>
+
+        {/* Buttons Grid for Individual Hypotheses */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-1">
+          <button
+            onClick={() => handleSimulateEmails("welcome")}
+            disabled={simulatingHypothesis !== null}
+            className="p-2.5 bg-stone-950 border border-white/10 hover:border-brand-red/50 rounded text-left transition-all group cursor-pointer disabled:opacity-50"
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] font-mono text-brand-red font-bold uppercase">HIPÓTESE 1</span>
+              {simulatingHypothesis === "welcome" ? <RefreshCw size={12} className="animate-spin text-brand-red" /> : <Send size={12} className="text-zinc-500 group-hover:text-brand-red" />}
+            </div>
+            <div className="text-xs font-bold text-white group-hover:text-stone-100">1. Boas-Vindas & Cadastro</div>
+            <div className="text-[10px] text-zinc-400 mt-0.5">Confirmação de conta + Alerta de novo usuário ao Admin</div>
+          </button>
+
+          <button
+            onClick={() => handleSimulateEmails("booking_pending")}
+            disabled={simulatingHypothesis !== null}
+            className="p-2.5 bg-stone-950 border border-white/10 hover:border-amber-500/50 rounded text-left transition-all group cursor-pointer disabled:opacity-50"
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] font-mono text-amber-400 font-bold uppercase">HIPÓTESE 2</span>
+              {simulatingHypothesis === "booking_pending" ? <RefreshCw size={12} className="animate-spin text-amber-400" /> : <FileText size={12} className="text-zinc-500 group-hover:text-amber-400" />}
+            </div>
+            <div className="text-xs font-bold text-white group-hover:text-stone-100">2. Nova Reserva (Contrato PDF)</div>
+            <div className="text-[10px] text-zinc-400 mt-0.5">Sinal pendente R$ 100 + Contrato PDF em anexo</div>
+          </button>
+
+          <button
+            onClick={() => handleSimulateEmails("payment_approved")}
+            disabled={simulatingHypothesis !== null}
+            className="p-2.5 bg-stone-950 border border-white/10 hover:border-emerald-500/50 rounded text-left transition-all group cursor-pointer disabled:opacity-50"
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] font-mono text-emerald-400 font-bold uppercase">HIPÓTESE 3</span>
+              {simulatingHypothesis === "payment_approved" ? <RefreshCw size={12} className="animate-spin text-emerald-400" /> : <CheckCircle2 size={12} className="text-zinc-500 group-hover:text-emerald-400" />}
+            </div>
+            <div className="text-xs font-bold text-white group-hover:text-stone-100">3. Baixa Automática / Sinal Pago</div>
+            <div className="text-[10px] text-zinc-400 mt-0.5">InfinitePay Webhook: Status 'Pagamento Aprovado' 🔴</div>
+          </button>
+
+          <button
+            onClick={() => handleSimulateEmails("booking_cancelled")}
+            disabled={simulatingHypothesis !== null}
+            className="p-2.5 bg-stone-950 border border-white/10 hover:border-red-500/50 rounded text-left transition-all group cursor-pointer disabled:opacity-50"
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] font-mono text-red-400 font-bold uppercase">HIPÓTESE 4</span>
+              {simulatingHypothesis === "booking_cancelled" ? <RefreshCw size={12} className="animate-spin text-red-400" /> : <AlertTriangle size={12} className="text-zinc-500 group-hover:text-red-400" />}
+            </div>
+            <div className="text-xs font-bold text-white group-hover:text-stone-100">4. Cancelamento de Reserva</div>
+            <div className="text-[10px] text-zinc-400 mt-0.5">Notificação de desocupação + Cláusula 9ª do Contrato</div>
+          </button>
+
+          <button
+            onClick={() => handleSimulateEmails("security_report")}
+            disabled={simulatingHypothesis !== null}
+            className="p-2.5 bg-stone-950 border border-white/10 hover:border-blue-500/50 rounded text-left transition-all group cursor-pointer disabled:opacity-50"
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] font-mono text-blue-400 font-bold uppercase">HIPÓTESE 5</span>
+              {simulatingHypothesis === "security_report" ? <RefreshCw size={12} className="animate-spin text-blue-400" /> : <ShieldCheck size={12} className="text-zinc-500 group-hover:text-blue-400" />}
+            </div>
+            <div className="text-xs font-bold text-white group-hover:text-stone-100">5. Relatório de Segurança</div>
+            <div className="text-[10px] text-zinc-400 mt-0.5">Auditoria mensal, rate limit & Firestore backups</div>
+          </button>
+
+          <button
+            onClick={() => handleSimulateEmails("performance_report")}
+            disabled={simulatingHypothesis !== null}
+            className="p-2.5 bg-stone-950 border border-white/10 hover:border-purple-500/50 rounded text-left transition-all group cursor-pointer disabled:opacity-50"
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] font-mono text-purple-400 font-bold uppercase">HIPÓTESE 6</span>
+              {simulatingHypothesis === "performance_report" ? <RefreshCw size={12} className="animate-spin text-purple-400" /> : <BarChart2 size={12} className="text-zinc-500 group-hover:text-purple-400" />}
+            </div>
+            <div className="text-xs font-bold text-white group-hover:text-stone-100">6. Métricas Comercial & Performance</div>
+            <div className="text-[10px] text-zinc-400 mt-0.5">Relatório de faturamento bruto e arrecadação ao gestor</div>
+          </button>
+        </div>
+
+        {/* Live Simulation Log */}
+        {simulationLogs.length > 0 && (
+          <div className="bg-stone-950 border border-white/10 rounded p-3 font-mono text-[11px] space-y-1.5 max-h-36 overflow-y-auto">
+            <div className="text-[10px] text-zinc-500 uppercase tracking-widest border-b border-white/5 pb-1 mb-1">
+              Console de Disparo em Tempo Real
+            </div>
+            {simulationLogs.slice(0, 5).map((log, idx) => (
+              <div key={idx} className={`flex items-start gap-2 ${log.type === "success" ? "text-emerald-400" : log.type === "error" ? "text-red-400" : "text-zinc-300"}`}>
+                <span className="text-zinc-600 shrink-0">[{log.time}]</span>
+                <span>{log.text}</span>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 

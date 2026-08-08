@@ -9,25 +9,63 @@ import {
   X, User, Lock, Mail, Phone, Calendar, MessageSquare, ShieldAlert,
   Upload, Check, CreditCard, ChevronRight, Settings, Plus, Trash2, 
   Sparkles, Bell, Send, Image as ImageIcon, Key, RefreshCw, AlertTriangle,
-  Activity, Eye, MousePointer, BarChart2, Download, Database, HardDrive,
+  Activity, Eye, EyeOff, MousePointer, BarChart2, Download, Database, HardDrive,
   Zap, Gauge, FileText, Star, Users, UserCheck, Shield, Layers, Award,
-  Sliders, Camera, Edit3, CheckCircle2, Power, Search
+  Sliders, Camera, Edit3, CheckCircle2, Power, Search, Maximize2, Minimize2, Globe, Clock, Video
 } from "lucide-react";
 import { 
   auth, db, signInWithEmailAndPassword, createUserWithEmailAndPassword, 
   sendPasswordResetEmail, signOut, onAuthStateChanged, doc, setDoc, getDoc, updateDoc, deleteDoc,
   collection, getDocs, query, where, orderBy, addDoc, onSnapshot, FirebaseUser,
-  handleFirestoreError, OperationType, cleanFirestoreData
+  handleFirestoreError, OperationType, cleanFirestoreData, uploadFileToStorage
 } from "../lib/firebase";
-import { logSecurityEvent, logActivityEvent, checkRateLimit, SecurityLog, ActivityLog, BehaviorLog } from "../lib/analytics";
+import { logSecurityEvent, logActivityEvent, checkRateLimit, SecurityLog, ActivityLog, BehaviorLog, MarketingSettings, DEFAULT_MARKETING_SETTINGS, trackConversionEvent } from "../lib/analytics";
 import { VitalMetricLog } from "../lib/vitals";
 import { Booking, Equipment } from "../types";
 import RentalContractModal from "./RentalContractModal";
 import AdminAnalyticsDashboard from "./AdminAnalyticsDashboard";
+import { sanitizeText, sanitizeEmail, sanitizePhone, sanitizeCpfCnpj, isSuspiciousInput } from "../lib/sanitize";
+import { formatVideoEmbedUrl } from "../lib/videoUtils";
+import { DEFAULT_PRISMA_PHOTOS } from "./Spaces";
+import { processAndOptimizeImageFile } from "../lib/imageOptimizer";
 
 // Helper function to concatenate classes cleanly
 function cn(...classes: (string | undefined | null | boolean)[]) {
   return classes.filter(Boolean).join(" ");
+}
+
+/**
+ * Compress and convert uploaded image files to optimized Data URLs for client-side storage
+ */
+async function compressImageFile(file: File, maxWidth = 1400, quality = 0.82): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let width = img.width;
+        let height = img.height;
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL("image/jpeg", quality));
+        } else {
+          resolve((e.target?.result as string) || "");
+        }
+      };
+      img.onerror = () => resolve((reader.result as string) || "");
+      img.src = (e.target?.result as string) || "";
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
 interface CustomerPanelProps {
@@ -51,6 +89,9 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [authError, setAuthError] = useState("");
@@ -106,18 +147,90 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
   const [adminNewMsg, setAdminNewMsg] = useState("");
 
   // Admin CMS - Hero Banner
-  const [heroSettings, setHeroSettings] = useState({
+  const [heroSettings, setHeroSettings] = useState<{
+    title1: string;
+    title2: string;
+    badge: string;
+    description: string;
+    bgImage: string;
+    heroPhotos: Array<{ url: string; mobileUrl?: string; caption?: string; webpSizeKb?: number }>;
+    btnPrimary: string;
+    btnSecondary: string;
+  }>({
     title1: "ESTÚDIO TRIÂNGULO",
     title2: "FOTOCLUB",
     badge: "Espaço Criativo Premium",
-    description: "O estúdio mais completo, barato e acessível no Centro de São Paulo (Largo do Paissandu, próximo ao metrô). 120m² climatizados com ciclorama em U, camarim e iluminação inclusa.",
+    description: "O estúdio mais completo, barato e acessível no Centro de São Paulo (Largo do Paissandu, próximo ao metrô). 90m² climatizados com ciclorama em U, camarim e iluminação inclusa.",
     bgImage: "https://triangulofotoclub.com.br/locacao/estudio/03-Fundo_Infinito_ciclorama.webp",
+    heroPhotos: [
+      {
+        url: "https://triangulofotoclub.com.br/locacao/estudio/03-Fundo_Infinito_ciclorama.webp",
+        mobileUrl: "https://triangulofotoclub.com.br/locacao/estudio/03-Fundo_Infinito_ciclorama.webp",
+        caption: "Ciclorama em U - Estúdio Triângulo"
+      }
+    ],
     btnPrimary: "RESERVAR HORÁRIO",
     btnSecondary: "Conhecer Estúdios"
   });
   const [heroSaveSuccess, setHeroSaveSuccess] = useState("");
+  const [isUploadingHeroBanner, setIsUploadingHeroBanner] = useState(false);
 
-  // Admin CMS - Spaces / Nosso Espaço
+  // Admin CMS - Seção Conceito & Vídeos da Locação
+  const [conceptSettings, setConceptSettings] = useState({
+    badge: "Sobre Nós",
+    title: "Nossa Base",
+    description: "Escolhemos o triângulo para representar o nosso fotoclube por ser uma simbologia forte e com profunda relação com a fotografia: ele representa a relação entre os princípios básicos da exposição (ISO, diafragma, e velocidade do obturador) e os três pilares fundamentais que sustentam nossas produções corporativas, comerciais e autorais: Equipamento, Ambiente e Conexão.",
+    videoUrls: [
+      "https://www.youtube.com/embed/wjVz3E63tSM?autoplay=1&mute=1&loop=1&playlist=wjVz3E63tSM&controls=1"
+    ],
+    pillar1Title: "Equipamento",
+    pillar1Desc: "Flashes Profoto de alto rendimento, acessórios de modelagem e câmeras de médio formato à disposição imediata para viabilizar seus projetos sem travas técnicas.",
+    pillar2Title: "Ambiente",
+    pillar2Desc: "Estúdios com arquitetura inteligente, climatizados, espaços amplos, isolamento acústico e luz natural abundante para total conforto e foco mental absoluto.",
+    pillar3Title: "Conexão",
+    pillar3Desc: "Muito mais que um espaço físico: um autêntico fotoclube para trocar referências, enriquecer portfólios, promover workshops e catalisar novos negócios em rede.",
+    isoTitle: "ISO",
+    isoDesc: "Representa a capacidade do sensor do clube em reagir à luz. Controla o grão conceitual e a pureza digital.",
+    diafragmaTitle: "Diafragma",
+    diafragmaDesc: "Define a profundidade de campo, controlando o bokeh de fundo e a nitidez dos detalhes do seu objeto principal.",
+    obturadorTitle: "Obturador",
+    obturadorDesc: "Modula a passagem temporal de luz: desde congelamentos instantâneos até rastros delicados de longa exposição."
+  });
+  const [conceptSaveSuccess, setConceptSaveSuccess] = useState("");
+
+  // Admin CMS - Spaces / Nosso Espaço (Seção Completa)
+  const [spaceSettings, setSpaceSettings] = useState({
+    headerBadge: "Nosso Espaço",
+    headerDesc: "Um estúdio completo, flexível e totalmente equipado no coração de São Paulo. Conheça cada detalhe através da nossa galeria exclusiva.",
+    name: "Triângulo Estúdio",
+    subtitle: "O infinito branco e iluminação profissional",
+    description: "Equipado com um ciclorama(fundo infinito) de madeira branco em 'U', pé direito de 3m, Largura 3M, Profundidade 3M e mais 3 metros de recuo, trás ainda uma estrutura aérea de trilhos para iluminação. Perfeito para editoriais de moda, campanhas publicitárias de grande porte, videoclipes e produções que necessitam de fundo infinito ou iluminação técnica avançada.",
+    hourlyRate: 100,
+    halfDayRate: 400,
+    fullDayRate: 700,
+    capacity: 15,
+    area: "90m²",
+    features: [
+      "Trilhos aéreos",
+      "3 Tochas de estudio Godox com modificadores.",
+      "Cortinas Blackout",
+      "Copa",
+      "Camarim (usando o ambiente do quarto cencio como camarim)."
+    ],
+    manualUrl: "https://triangulofotoclub.com.br/locacao/estudio/pdf%20locac%CC%A7a%CC%83o.pdf",
+    manualTitle: "Baixe nosso Manual",
+    manualDesc: "Confira todas as especificações técnicas, regras do estúdio e informações detalhadas sobre as salas do Triângulo.",
+    assistanceTitle: "Precisa de assistência técnica em seu ensaio?",
+    assistanceDesc: "Nossos estúdios contam com assistência presencial de setup e auxílio básico de briefing. Você também pode alugar assistentes fotográficos avançados diretamente no nosso formulário abaixo."
+  });
+  const [spacePhotos, setSpacePhotos] = useState<Array<{ url: string; caption: string }>>(DEFAULT_PRISMA_PHOTOS);
+  const [spaceSaveMsg, setSpaceSaveMsg] = useState("");
+  const [gallerySaveMsg, setGallerySaveMsg] = useState("");
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [newPhotoCaption, setNewPhotoCaption] = useState("");
+  const [newFeatureText, setNewFeatureText] = useState("");
+  const [photoFilter, setPhotoFilter] = useState("");
+
   const [spacesList, setSpacesList] = useState<any[]>([]);
   const [newSpaceName, setNewSpaceName] = useState("");
   const [newSpaceSubtitle, setNewSpaceSubtitle] = useState("");
@@ -126,9 +239,8 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
   const [newSpaceHalfDay, setNewSpaceHalfDay] = useState(400);
   const [newSpaceFullDay, setNewSpaceFullDay] = useState(700);
   const [newSpaceCapacity, setNewSpaceCapacity] = useState(15);
-  const [newSpaceArea, setNewSpaceArea] = useState("120m²");
+  const [newSpaceArea, setNewSpaceArea] = useState("90m²");
   const [newSpaceFeatures, setNewSpaceFeatures] = useState("Ciclorama em U, Camarim, Cortinas Blackout, Copa");
-  const [spaceSaveMsg, setSpaceSaveMsg] = useState("");
 
   // Admin CMS - Coworking Plans
   const [plansList, setPlansList] = useState<any[]>([]);
@@ -152,6 +264,10 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
   const [newEquipDesc, setNewEquipDesc] = useState("");
   const [assetSaveMsg, setAssetSaveMsg] = useState("");
 
+  // Admin Marketing & Integrations CMS
+  const [marketingSettings, setMarketingSettings] = useState<MarketingSettings>(DEFAULT_MARKETING_SETTINGS);
+  const [marketingSaveSuccess, setMarketingSaveSuccess] = useState("");
+
   // Admin Logs & Telemetry
   const [securityLogs, setSecurityLogs] = useState<SecurityLog[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
@@ -171,9 +287,11 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
       if (res.ok) {
         const data = await res.json();
         setBackupFiles(data.backups || []);
+      } else {
+        console.warn("Server returned non-200 for backup list:", res.status);
       }
     } catch (err) {
-      console.error("Error listing backups:", err);
+      console.warn("Could not list server backup files (API offline or client CORS):", err);
     }
   };
 
@@ -184,7 +302,9 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
       const res = await fetch("/api/admin/trigger-backup");
       const data = await res.json();
       if (data.success) {
-        setBackupMsg(`✅ Backup exportado com sucesso! (${data.counts?.securityLogsCount || 0} logs)`);
+        const counts = data.counts || {};
+        const csStatus = data.cloudStorageStatus ? ` | GCS: ${data.cloudStorageStatus}` : "";
+        setBackupMsg(`✅ Backup exportado! (${counts.bookingsCount || 0} reservas, ${counts.usersCount || 0} usuários, ${counts.securityLogsCount || 0} logs${csStatus})`);
         fetchBackupList();
       } else {
         setBackupMsg("❌ Erro ao exportar backup: " + (data.error || "Desconhecido"));
@@ -195,6 +315,54 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
       setBackupLoading(false);
     }
   };
+
+  // Session inactivity & Fullscreen states
+  const [isFullScreen, setIsFullScreen] = useState(false);
+  const [sessionTimeLeft, setSessionTimeLeft] = useState<number>(1800); // 30 minutes in seconds
+  const lastActivityRef = useRef<number>(Date.now());
+
+  // Inactivity session timer hook
+  useEffect(() => {
+    if (!user) return;
+
+    const resetActivity = () => {
+      lastActivityRef.current = Date.now();
+    };
+
+    window.addEventListener("mousemove", resetActivity);
+    window.addEventListener("keydown", resetActivity);
+    window.addEventListener("click", resetActivity);
+    window.addEventListener("scroll", resetActivity);
+    window.addEventListener("touchstart", resetActivity);
+
+    const interval = setInterval(() => {
+      const inactiveSecs = Math.floor((Date.now() - lastActivityRef.current) / 1000);
+      const remaining = Math.max(0, 1800 - inactiveSecs);
+      setSessionTimeLeft(remaining);
+
+      if (remaining <= 0) {
+        clearInterval(interval);
+        signOut(auth);
+        alert("Sua sessão expirou devido a 30 minutos de inatividade para sua segurança. Por favor, faça login novamente.");
+      }
+    }, 1000);
+
+    return () => {
+      window.removeEventListener("mousemove", resetActivity);
+      window.removeEventListener("keydown", resetActivity);
+      window.removeEventListener("click", resetActivity);
+      window.removeEventListener("scroll", resetActivity);
+      window.removeEventListener("touchstart", resetActivity);
+      clearInterval(interval);
+    };
+  }, [user]);
+
+  // Always open in full screen when opened
+  useEffect(() => {
+    if (isOpen) {
+      setIsFullScreen(true);
+    }
+  }, [isOpen]);
 
   // Watch Auth & Firestore Real-time Listeners
   useEffect(() => {
@@ -241,6 +409,9 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
         setProfilePhone(uPhone);
         setProfileAvatar(uAvatar);
         setActiveTab(userRole === "admin" ? "admin-analytics" : "bookings");
+        if (userRole === "admin") {
+          setIsFullScreen(true);
+        }
 
         // Client Listeners
         if (userRole === "client") {
@@ -319,17 +490,123 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
           const unsubHero = onSnapshot(doc(db, "site_settings", "hero"), (snap) => {
             if (snap.exists()) {
               const hData = snap.data();
+              let photosList: Array<{ url: string; mobileUrl?: string; caption?: string; webpSizeKb?: number }> = [];
+
+              if (Array.isArray(hData.heroPhotos) && hData.heroPhotos.length > 0) {
+                photosList = hData.heroPhotos.slice(0, 10).map((p: any) => ({
+                  url: typeof p === "string" ? p : p.url,
+                  mobileUrl: typeof p === "string" ? p : (p.mobileUrl || p.url),
+                  caption: typeof p === "string" ? "Estúdio Triângulo" : (p.caption || "Estúdio Triângulo"),
+                  webpSizeKb: typeof p === "object" ? p.webpSizeKb : undefined
+                }));
+              } else if (hData.bgImage) {
+                photosList = [{
+                  url: hData.bgImage,
+                  mobileUrl: hData.bgImageMobile || hData.bgImage,
+                  caption: "Estúdio Triângulo"
+                }];
+              }
+
               setHeroSettings({
                 title1: hData.title1 || "ESTÚDIO TRIÂNGULO",
                 title2: hData.title2 || "FOTOCLUB",
                 badge: hData.badge || "Espaço Criativo Premium",
                 description: hData.description || "",
                 bgImage: hData.bgImage || "",
+                heroPhotos: photosList.length > 0 ? photosList : [
+                  {
+                    url: "https://triangulofotoclub.com.br/locacao/estudio/03-Fundo_Infinito_ciclorama.webp",
+                    mobileUrl: "https://triangulofotoclub.com.br/locacao/estudio/03-Fundo_Infinito_ciclorama.webp",
+                    caption: "Ciclorama em U - Estúdio Triângulo"
+                  }
+                ],
                 btnPrimary: hData.btnPrimary || "RESERVAR HORÁRIO",
                 btnSecondary: hData.btnSecondary || "Conhecer Estúdios"
               });
             }
           }, (error) => handleFirestoreError(error, OperationType.GET, "site_settings/hero"));
+
+          // 6b. Concept & Location Videos Settings
+          const unsubConcept = onSnapshot(doc(db, "site_settings", "concept"), (snap) => {
+            if (snap.exists()) {
+              const cData = snap.data();
+              let vUrls: string[] = [];
+              if (Array.isArray(cData.videoUrls) && cData.videoUrls.length > 0) {
+                vUrls = cData.videoUrls.filter((u: any) => typeof u === "string" && u.trim().length > 0);
+              } else if (cData.videoUrl && typeof cData.videoUrl === "string" && cData.videoUrl.trim().length > 0) {
+                vUrls = [cData.videoUrl.trim()];
+              }
+
+              if (vUrls.length === 0) {
+                vUrls = ["https://www.youtube.com/embed/wjVz3E63tSM?autoplay=1&mute=1&loop=1&playlist=wjVz3E63tSM&controls=1"];
+              }
+
+              setConceptSettings({
+                badge: cData.badge || "Sobre Nós",
+                title: cData.title || "Nossa Base",
+                description: cData.description || "Escolhemos o triângulo para representar o nosso fotoclube...",
+                videoUrls: vUrls,
+                pillar1Title: cData.pillar1Title || "Equipamento",
+                pillar1Desc: cData.pillar1Desc || "Flashes Profoto de alto rendimento...",
+                pillar2Title: cData.pillar2Title || "Ambiente",
+                pillar2Desc: cData.pillar2Desc || "Estúdios com arquitetura inteligente...",
+                pillar3Title: cData.pillar3Title || "Conexão",
+                pillar3Desc: cData.pillar3Desc || "Muito mais que um espaço físico...",
+                isoTitle: cData.isoTitle || "ISO",
+                isoDesc: cData.isoDesc || "Representa a capacidade do sensor do clube...",
+                diafragmaTitle: cData.diafragmaTitle || "Diafragma",
+                diafragmaDesc: cData.diafragmaDesc || "Define a profundidade de campo...",
+                obturadorTitle: cData.obturadorTitle || "Obturador",
+                obturadorDesc: cData.obturadorDesc || "Modula a passagem temporal de luz..."
+              });
+            }
+          }, (error) => handleFirestoreError(error, OperationType.GET, "site_settings/concept"));
+
+          // 6c. Space Settings & Gallery Photos
+          const unsubSpaceSettings = onSnapshot(doc(db, "site_settings", "spaces"), (snap) => {
+            if (snap.exists()) {
+              const sData = snap.data();
+              setSpaceSettings((prev) => ({
+                ...prev,
+                headerBadge: sData.headerBadge || prev.headerBadge,
+                headerDesc: sData.headerDesc || prev.headerDesc,
+                name: sData.name || prev.name,
+                subtitle: sData.subtitle || prev.subtitle,
+                description: sData.description || prev.description,
+                hourlyRate: typeof sData.hourlyRate === "number" ? sData.hourlyRate : prev.hourlyRate,
+                halfDayRate: typeof sData.halfDayRate === "number" ? sData.halfDayRate : prev.halfDayRate,
+                fullDayRate: typeof sData.fullDayRate === "number" ? sData.fullDayRate : prev.fullDayRate,
+                capacity: typeof sData.capacity === "number" ? sData.capacity : prev.capacity,
+                area: sData.area || prev.area,
+                features: Array.isArray(sData.features) && sData.features.length > 0 ? sData.features : prev.features,
+                manualUrl: sData.manualUrl || prev.manualUrl,
+                manualTitle: sData.manualTitle || prev.manualTitle,
+                manualDesc: sData.manualDesc || prev.manualDesc,
+                assistanceTitle: sData.assistanceTitle || prev.assistanceTitle,
+                assistanceDesc: sData.assistanceDesc || prev.assistanceDesc
+              }));
+            }
+          }, (error) => handleFirestoreError(error, OperationType.GET, "site_settings/spaces"));
+
+          const unsubSpaceGallery = onSnapshot(doc(db, "site_settings", "spaces_gallery"), (snap) => {
+            if (snap.exists()) {
+              const gData = snap.data();
+              if (Array.isArray(gData.photos) && gData.photos.length > 0) {
+                setSpacePhotos(gData.photos);
+              }
+            }
+          }, (error) => handleFirestoreError(error, OperationType.GET, "site_settings/spaces_gallery"));
+
+          // Marketing & Integrations Settings
+          const unsubIntegrations = onSnapshot(doc(db, "site_settings", "integrations"), (snap) => {
+            if (snap.exists()) {
+              const mData = snap.data() as MarketingSettings;
+              setMarketingSettings((prev) => ({
+                ...prev,
+                ...mData
+              }));
+            }
+          }, (error) => handleFirestoreError(error, OperationType.GET, "site_settings/integrations"));
 
           // 7. Security & Activity Logs
           const secQuery = query(collection(db, "security_logs"), orderBy("timestamp", "desc"));
@@ -369,6 +646,9 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
             unsubSpaces();
             unsubPlans();
             unsubHero();
+            unsubConcept();
+            unsubSpaceSettings();
+            unsubSpaceGallery();
             unsubSec();
             unsubAct();
             unsubBeh();
@@ -441,14 +721,24 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
   const handleSubmitTestimonial = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!testimonialQuote.trim()) return;
+    
+    if (isSuspiciousInput(testimonialQuote) || isSuspiciousInput(testimonialRole)) {
+      alert("Entrada de depoimento com formato inválido. Remova caracteres ou scripts suspeitos.");
+      return;
+    }
+
     setTestimonialLoading(true);
     setTestimonialSuccess("");
 
     try {
+      const cleanQuote = sanitizeText(testimonialQuote, 800);
+      const cleanRole = sanitizeText(testimonialRole, 100) || "Diretor de Fotografia";
+      const cleanName = sanitizeText(profileName, 100) || "Fotógrafo Parceiro";
+
       await addDoc(collection(db, "testimonials"), cleanFirestoreData({
-        name: profileName || "Fotógrafo Parceiro",
-        role: testimonialRole || "Diretor de Fotografia",
-        quote: testimonialQuote,
+        name: cleanName,
+        role: cleanRole,
+        quote: cleanQuote,
         rating: testimonialRating,
         avatarUrl: profileAvatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200",
         createdAt: new Date().toISOString(),
@@ -466,15 +756,260 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
   };
 
   // Admin Save Hero Banner CMS
+  const handleHeroBannerFilesSelected = async (files: FileList | File[]) => {
+    if (!files || files.length === 0) return;
+    const currentCount = heroSettings.heroPhotos.length;
+    if (currentCount >= 10) {
+      alert("Limite de 10 fotos no carrossel Hero atingido. Remova alguma foto antes de adicionar novas.");
+      return;
+    }
+
+    setIsUploadingHeroBanner(true);
+    try {
+      const newItems: Array<{ url: string; mobileUrl: string; caption: string; webpSizeKb: number }> = [];
+      const remainingSlots = 10 - currentCount;
+      const processCount = Math.min(files.length, remainingSlots);
+
+      for (let i = 0; i < processCount; i++) {
+        const file = files[i];
+        if (!file.type.startsWith("image/")) continue;
+        const res = await processAndOptimizeImageFile(file);
+        const caption = file.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ") || "Estúdio Triângulo";
+        newItems.push({
+          url: res.webpUrl,
+          mobileUrl: res.mobileWebpUrl,
+          caption,
+          webpSizeKb: res.webpSizeKb
+        });
+      }
+
+      if (newItems.length > 0) {
+        setHeroSettings((prev) => {
+          const updatedPhotos = [...prev.heroPhotos, ...newItems].slice(0, 10);
+          return {
+            ...prev,
+            heroPhotos: updatedPhotos,
+            bgImage: updatedPhotos[0]?.url || prev.bgImage
+          };
+        });
+        setHeroSaveSuccess(`✅ ${newItems.length} foto(s) convertida(s) para WebP e adicionada(s) ao carrossel Hero! Clique em "Salvar Alterações do Banner Hero" para publicar no site.`);
+        setTimeout(() => setHeroSaveSuccess(""), 6000);
+      }
+    } catch (err) {
+      console.error("Error processing hero banner photos:", err);
+      alert("Erro ao converter e processar imagem do banner Hero.");
+    } finally {
+      setIsUploadingHeroBanner(false);
+    }
+  };
+
+  const handleRemoveHeroPhoto = (index: number) => {
+    if (heroSettings.heroPhotos.length <= 1) {
+      alert("O carrossel deve conter pelo menos 1 foto.");
+      return;
+    }
+    setHeroSettings((prev) => {
+      const updated = prev.heroPhotos.filter((_, i) => i !== index);
+      return {
+        ...prev,
+        heroPhotos: updated,
+        bgImage: updated[0]?.url || prev.bgImage
+      };
+    });
+  };
+
+  const handleMoveHeroPhoto = (index: number, direction: "up" | "down") => {
+    const targetIndex = direction === "up" ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= heroSettings.heroPhotos.length) return;
+
+    setHeroSettings((prev) => {
+      const updated = [...prev.heroPhotos];
+      const temp = updated[index];
+      updated[index] = updated[targetIndex];
+      updated[targetIndex] = temp;
+      return {
+        ...prev,
+        heroPhotos: updated,
+        bgImage: updated[0]?.url || prev.bgImage
+      };
+    });
+  };
+
   const handleSaveHeroSettings = async () => {
     setHeroSaveSuccess("");
     try {
-      await setDoc(doc(db, "site_settings", "hero"), cleanFirestoreData(heroSettings));
-      setHeroSaveSuccess("Banner Hero atualizado com sucesso no site!");
+      const firstPhoto = heroSettings.heroPhotos[0]?.url || heroSettings.bgImage;
+      const dataToSave = {
+        ...heroSettings,
+        bgImage: firstPhoto,
+        heroPhotos: heroSettings.heroPhotos.slice(0, 10),
+        updatedAt: new Date().toISOString()
+      };
+      await setDoc(doc(db, "site_settings", "hero"), cleanFirestoreData(dataToSave));
+      setHeroSaveSuccess("Banner Hero & Carrossel atualizados com sucesso no site!");
+      logActivityEvent('settings_updated', profileName, "Atualizou as configurações e fotos do Banner Hero");
       setTimeout(() => setHeroSaveSuccess(""), 4000);
     } catch (err) {
       console.error("Error saving hero settings:", err);
+      alert("Erro ao salvar banner Hero: " + (err as any)?.message);
     }
+  };
+
+  // Admin Save Concept & Location Videos CMS
+  const handleSaveConceptSettings = async () => {
+    setConceptSaveSuccess("");
+    try {
+      const formattedUrls = conceptSettings.videoUrls
+        .map(url => formatVideoEmbedUrl(url))
+        .filter(url => url.trim().length > 0)
+        .slice(0, 5); // Max 5 videos
+
+      const finalUrls = formattedUrls.length > 0 ? formattedUrls : ["https://www.youtube.com/embed/wjVz3E63tSM?autoplay=1&mute=1&loop=1&playlist=wjVz3E63tSM&controls=1"];
+
+      const dataToSave = {
+        ...conceptSettings,
+        videoUrls: finalUrls,
+        videoUrl: finalUrls[0], // for backward compatibility
+        updatedAt: new Date().toISOString()
+      };
+
+      await setDoc(doc(db, "site_settings", "concept"), cleanFirestoreData(dataToSave), { merge: true });
+      setConceptSaveSuccess("Seção Conceito & Vídeos da Locação salvos com sucesso!");
+      logActivityEvent('settings_updated', profileName, "Atualizou as configurações do Conceito e Vídeos de Locação");
+      setTimeout(() => setConceptSaveSuccess(""), 4000);
+    } catch (err: any) {
+      console.error("Error saving concept settings:", err);
+      alert("Erro ao salvar seção Conceito: " + err.message);
+    }
+  };
+
+  const handleAddVideoUrlField = () => {
+    if (conceptSettings.videoUrls.length >= 5) {
+      alert("O limite máximo é de 5 vídeos da locação.");
+      return;
+    }
+    setConceptSettings(prev => ({
+      ...prev,
+      videoUrls: [...prev.videoUrls, ""]
+    }));
+  };
+
+  const handleRemoveVideoUrlField = (index: number) => {
+    if (conceptSettings.videoUrls.length <= 1) {
+      alert("É necessário ter pelo menos 1 vídeo cadastrado.");
+      return;
+    }
+    setConceptSettings(prev => ({
+      ...prev,
+      videoUrls: prev.videoUrls.filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleUpdateVideoUrlField = (index: number, value: string) => {
+    setConceptSettings(prev => {
+      const updated = [...prev.videoUrls];
+      updated[index] = value;
+      return { ...prev, videoUrls: updated };
+    });
+  };
+
+  // Handlers for "Nosso Espaço" CMS
+  const handleSaveSpaceSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSpaceSaveMsg("");
+    try {
+      await setDoc(doc(db, "site_settings", "spaces"), cleanFirestoreData(spaceSettings), { merge: true });
+      setSpaceSaveMsg("Informações do Estúdio salvas com sucesso!");
+      logActivityEvent('settings_updated', profileName, "Atualizou as informações principais da seção Nosso Espaço");
+      setTimeout(() => setSpaceSaveMsg(""), 4000);
+    } catch (err: any) {
+      console.error("Error saving space settings:", err);
+      setSpaceSaveMsg("Erro ao salvar informações do estúdio.");
+    }
+  };
+
+  const handleSaveSpaceGallery = async () => {
+    setGallerySaveMsg("");
+    try {
+      await setDoc(doc(db, "site_settings", "spaces_gallery"), {
+        photos: spacePhotos,
+        updatedAt: new Date().toISOString()
+      });
+      setGallerySaveMsg("Galeria de fotos e carrossel salvos com sucesso!");
+      logActivityEvent('settings_updated', profileName, "Atualizou a galeria de fotos do carrossel no Nosso Espaço");
+      setTimeout(() => setGallerySaveMsg(""), 4000);
+    } catch (err: any) {
+      console.error("Error saving gallery photos:", err);
+      setGallerySaveMsg("Erro ao salvar fotos da galeria.");
+    }
+  };
+
+  const handlePhotoFilesSelected = async (files: FileList | File[]) => {
+    if (!files || files.length === 0) return;
+    setIsUploadingPhoto(true);
+    try {
+      const newItems: Array<{ url: string; caption: string }> = [];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (!file.type.startsWith("image/")) continue;
+        const dataUrl = await compressImageFile(file);
+        const defaultCaption = newPhotoCaption.trim() || file.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ");
+        newItems.push({
+          url: dataUrl,
+          caption: defaultCaption
+        });
+      }
+      if (newItems.length > 0) {
+        setSpacePhotos((prev) => [...newItems, ...prev]);
+        setGallerySaveMsg(`✅ ${newItems.length} foto(s) anexada(s) com sucesso ao carrossel! Clique em 'Salvar Galeria' para publicar no site.`);
+        setTimeout(() => setGallerySaveMsg(""), 5000);
+        setNewPhotoCaption("");
+      }
+    } catch (err) {
+      console.error("Error processing image file upload:", err);
+      alert("Erro ao processar arquivo de imagem.");
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  };
+
+  const handleRemovePhotoFromGallery = (index: number) => {
+    setSpacePhotos((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleMovePhoto = (index: number, direction: 'up' | 'down') => {
+    setSpacePhotos((prev) => {
+      const arr = [...prev];
+      const targetIdx = direction === 'up' ? index - 1 : index + 1;
+      if (targetIdx < 0 || targetIdx >= arr.length) return prev;
+      const temp = arr[index];
+      arr[index] = arr[targetIdx];
+      arr[targetIdx] = temp;
+      return arr;
+    });
+  };
+
+  const handleResetGalleryToDefault = () => {
+    if (window.confirm("Deseja restaurar a galeria para as 28 fotos originais do estúdio?")) {
+      setSpacePhotos(DEFAULT_PRISMA_PHOTOS);
+    }
+  };
+
+  const handleAddFeatureTag = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newFeatureText.trim()) return;
+    setSpaceSettings((prev) => ({
+      ...prev,
+      features: [...prev.features, newFeatureText.trim()]
+    }));
+    setNewFeatureText("");
+  };
+
+  const handleRemoveFeatureTag = (index: number) => {
+    setSpaceSettings((prev) => ({
+      ...prev,
+      features: prev.features.filter((_, i) => i !== index)
+    }));
   };
 
   // Admin Save Space (Nosso Espaço)
@@ -486,15 +1021,15 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
       const spaceId = "space-" + Date.now();
       await setDoc(doc(db, "spaces", spaceId), cleanFirestoreData({
         id: spaceId,
-        name: newSpaceName,
-        subtitle: newSpaceSubtitle,
-        description: newSpaceDesc,
+        name: sanitizeText(newSpaceName, 100),
+        subtitle: sanitizeText(newSpaceSubtitle, 200),
+        description: sanitizeText(newSpaceDesc, 1000),
         hourlyRate: Number(newSpaceHourly),
         halfDayRate: Number(newSpaceHalfDay),
         fullDayRate: Number(newSpaceFullDay),
         capacity: Number(newSpaceCapacity),
-        area: newSpaceArea,
-        features: newSpaceFeatures.split(",").map(s => s.trim()).filter(Boolean)
+        area: sanitizeText(newSpaceArea, 20),
+        features: newSpaceFeatures.split(",").map(s => sanitizeText(s, 100)).filter(Boolean)
       }));
       setSpaceSaveMsg("Espaço cadastrado com sucesso!");
       setNewSpaceName("");
@@ -522,9 +1057,9 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
       const planId = "plan-" + Date.now();
       await setDoc(doc(db, "cowork_plans", planId), cleanFirestoreData({
         id: planId,
-        name: newPlanName,
+        name: sanitizeText(newPlanName, 100),
         price: Number(newPlanPrice),
-        features: newPlanFeatures.split(",").map(s => s.trim()).filter(Boolean)
+        features: newPlanFeatures.split(",").map(s => sanitizeText(s, 100)).filter(Boolean)
       }));
       setPlanSaveMsg("Plano de Coworking cadastrado com sucesso!");
       setNewPlanName("");
@@ -549,10 +1084,10 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
 
     const newEq: Equipment = {
       id: "eq-" + Date.now(),
-      name: newEquipName,
+      name: sanitizeText(newEquipName, 100),
       category: newEquipCategory,
       price: Number(newEquipPrice),
-      description: newEquipDesc,
+      description: sanitizeText(newEquipDesc, 300),
       isAvailable: true
     };
 
@@ -601,21 +1136,67 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
     }
   };
 
-  // User Actions (Toggle Admin & Block/Unblock)
+  // User & Booking Admin Actions (Toggle Admin, Block/Unblock, Delete User, Cancel Booking, Delete Booking)
   const handleToggleUserAdmin = async (userId: string, currentRole: string) => {
     const nextRole = currentRole === "admin" ? "client" : "admin";
     try {
       await updateDoc(doc(db, "users", userId), cleanFirestoreData({ role: nextRole }));
-    } catch (err) {
+      logActivityEvent('settings_updated', profileName, `Alterado cargo do usuário ${userId} para ${nextRole}`);
+    } catch (err: any) {
       console.error("Error updating user role:", err);
+      alert("Erro ao alterar cargo do usuário: " + err.message);
     }
   };
 
-  const handleToggleUserBlock = async (userId: string, currentBlocked?: boolean) => {
-    try {
-      await updateDoc(doc(db, "users", userId), cleanFirestoreData({ isBlocked: !currentBlocked }));
-    } catch (err) {
-      console.error("Error toggling user block status:", err);
+  const handleToggleUserBlock = async (userId: string, userName: string, currentBlocked?: boolean) => {
+    const actionText = currentBlocked ? "DESBLOQUEAR" : "BLOQUEAR";
+    if (window.confirm(`Tem certeza que deseja ${actionText} o acesso do usuário "${userName || userId}"?`)) {
+      try {
+        await updateDoc(doc(db, "users", userId), cleanFirestoreData({ isBlocked: !currentBlocked }));
+        logActivityEvent('settings_updated', profileName, `Usuário ${userName || userId} foi ${currentBlocked ? 'desbloqueado' : 'bloqueado'}`);
+      } catch (err: any) {
+        console.error("Error toggling user block status:", err);
+        alert("Erro ao alterar status de bloqueio: " + err.message);
+      }
+    }
+  };
+
+  const handleDeleteUser = async (userId: string, userName: string, userEmail: string) => {
+    if (window.confirm(`⚠️ EXCLUIR USUÁRIO PERMANENTEMENTE\n\nTem certeza que deseja excluir o cadastro de "${userName || userEmail}" (${userEmail})?\n\nEsta ação removerá o registro do banco de dados.`)) {
+      try {
+        await deleteDoc(doc(db, "users", userId));
+        logActivityEvent('settings_updated', profileName, `Usuário ${userName || userEmail} (${userId}) excluído`);
+        alert("✅ Usuário excluído com sucesso!");
+      } catch (err: any) {
+        console.error("Error deleting user:", err);
+        alert("Erro ao excluir usuário: " + err.message);
+      }
+    }
+  };
+
+  const handleCancelBooking = async (bookingId: string, clientName: string) => {
+    if (window.confirm(`CANCELAR LOCAÇÃO: Deseja alterar o status da reserva #${bookingId} (${clientName}) para CANCELADA?`)) {
+      try {
+        await updateDoc(doc(db, "bookings", bookingId), cleanFirestoreData({ status: "Cancelada" }));
+        logActivityEvent('booking_status_updated', profileName, `Locação #${bookingId} de ${clientName} foi cancelada`);
+        alert("✅ Locação cancelada com sucesso!");
+      } catch (err: any) {
+        console.error("Error canceling booking:", err);
+        alert("Erro ao cancelar locação: " + err.message);
+      }
+    }
+  };
+
+  const handleDeleteBooking = async (bookingId: string, clientName: string) => {
+    if (window.confirm(`⚠️ EXCLUIR LOCAÇÃO PERMANENTEMENTE\n\nTem certeza que deseja EXCLUIR a reserva #${bookingId} de "${clientName}"?\n\nEsta ação removerá definitivamente o registro do sistema.`)) {
+      try {
+        await deleteDoc(doc(db, "bookings", bookingId));
+        logActivityEvent('booking_status_updated', profileName, `Locação #${bookingId} de ${clientName} excluída permanentemente`);
+        alert("✅ Locação excluída com sucesso!");
+      } catch (err: any) {
+        console.error("Error deleting booking:", err);
+        alert("Erro ao excluir locação: " + err.message);
+      }
     }
   };
 
@@ -632,21 +1213,90 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
       return;
     }
 
+    if (password !== confirmPassword) {
+      setAuthError("As senhas digitadas não coincidem. Por favor, verifique.");
+      setAuthLoading(false);
+      return;
+    }
+
+    if (isSuspiciousInput(name) || isSuspiciousInput(email)) {
+      setAuthError("Dados de cadastro inválidos ou caracteres não permitidos.");
+      setAuthLoading(false);
+      return;
+    }
+
+    if (!checkRateLimit("register_attempt", 5, 60000)) {
+      setAuthError("Limite de tentativas de cadastro excedido. Aguarde 1 minuto.");
+      setAuthLoading(false);
+      return;
+    }
+
+    const cleanUserEmail = sanitizeEmail(email);
+    const cleanUserName = sanitizeText(name, 100);
+    const cleanUserPhone = sanitizePhone(phone);
+
     try {
-      const cred = await createUserWithEmailAndPassword(auth, email, password);
-      await setDoc(doc(db, "users", cred.user.uid), cleanFirestoreData({
-        uid: cred.user.uid,
-        email: email,
-        name: name,
-        phone: phone,
+      // 1. Query Firestore first by email to check if a user document exists
+      const userQuery = query(collection(db, "users"), where("email", "==", cleanUserEmail));
+      const existingUserDocs = await getDocs(userQuery);
+
+      if (!existingUserDocs.empty) {
+        setAuthError("Este e-mail já está cadastrado no sistema. Por favor, vá na aba 'Entrar' e digite sua senha ou clique em 'Esqueci minha senha'.");
+        setAuthLoading(false);
+        return;
+      }
+
+      let uid = "";
+      try {
+        const cred = await createUserWithEmailAndPassword(auth, cleanUserEmail, password);
+        uid = cred.user.uid;
+      } catch (authErr: any) {
+        if (authErr.code === 'auth/email-already-in-use') {
+          // If auth user exists but no Firestore doc, attempt sign in with password to finalize registration
+          try {
+            const loginCred = await signInWithEmailAndPassword(auth, cleanUserEmail, password);
+            uid = loginCred.user.uid;
+          } catch (loginErr: any) {
+            setAuthError("Este e-mail já possui uma conta cadastrada. Vá para a aba 'Entrar' e informe sua senha, ou clique em 'Esqueci minha senha'.");
+            setAuthLoading(false);
+            return;
+          }
+        } else {
+          throw authErr;
+        }
+      }
+
+      await setDoc(doc(db, "users", uid), cleanFirestoreData({
+        uid: uid,
+        email: cleanUserEmail,
+        name: cleanUserName,
+        phone: cleanUserPhone,
         role: "client",
         avatarUrl: "",
         createdAt: new Date().toLocaleDateString("pt-BR"),
       }));
 
+      logActivityEvent('user_signup', cleanUserEmail, `Novo usuário registrado: ${cleanUserName} (${cleanUserEmail})`);
+
+      // Trigger Welcome email to User and Admin Notification Email
+      try {
+        await fetch('/api/send-welcome-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: cleanUserEmail,
+            name: cleanUserName,
+            phone: cleanUserPhone
+          })
+        });
+      } catch (emailErr) {
+        console.error("Erro ao solicitar envio de e-mail de cadastro:", emailErr);
+      }
+
       setAuthSuccess("Cadastro realizado! Seja bem-vindo.");
       setIsRegistering(false);
     } catch (error: any) {
+      logSecurityEvent('suspicious_input', 'medium', `Falha ao cadastrar usuário com e-mail: ${email}`, email);
       setAuthError(error.message || "Erro ao realizar cadastro.");
     } finally {
       setAuthLoading(false);
@@ -666,9 +1316,19 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
       return;
     }
 
+    // Rate Limiter to protect against Brute Force attacks (max 5 attempts per minute per email/IP)
+    if (!checkRateLimit(`login_${cleanEmail}`, 5, 60000)) {
+      setAuthError("Muitas tentativas malsucedidas de login. Por segurança, aguarde 1 minuto antes de tentar novamente.");
+      logSecurityEvent('rate_limit_exceeded', 'high', `Bloqueio temporário de anti-brute force ativado para ${cleanEmail}`, cleanEmail);
+      setAuthLoading(false);
+      return;
+    }
+
     try {
-      await signInWithEmailAndPassword(auth, cleanEmail, password);
+      const userCred = await signInWithEmailAndPassword(auth, cleanEmail, password);
+      logActivityEvent('user_login', cleanEmail, `Login efetuado com sucesso (UID: ${userCred.user.uid})`);
     } catch (error: any) {
+      logSecurityEvent('failed_login', 'medium', `Tentativa de login malsucedida (senha incorreta ou e-mail inexistente): ${cleanEmail}`, cleanEmail);
       setAuthError("Credenciais inválidas. Verifique seu e-mail e senha.");
     } finally {
       setAuthLoading(false);
@@ -680,8 +1340,15 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
       setAuthError("Insira seu e-mail para receber o link de redefinição.");
       return;
     }
+
+    if (!checkRateLimit(`reset_${email}`, 3, 60000)) {
+      setAuthError("Muitas solicitações de redefinição de senha. Aguarde 1 minuto.");
+      return;
+    }
+
     try {
       await sendPasswordResetEmail(auth, email);
+      logSecurityEvent('password_reset_request', 'low', `Solicitação de redefinição de senha enviada para ${email}`, email);
       setAuthSuccess("E-mail de redefinição enviado com sucesso!");
     } catch (err: any) {
       setAuthError("Erro ao enviar e-mail de redefinição.");
@@ -718,17 +1385,23 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
     return Object.values(map).sort((a, b) => b.count - a.count);
   }, [allBookings]);
 
+  const handleSaveMarketingSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMarketingSaveSuccess("");
+    try {
+      await setDoc(doc(db, "site_settings", "integrations"), cleanFirestoreData(marketingSettings), { merge: true });
+      logActivityEvent('settings_updated', user?.email, 'Configurações de Marketing, GA4, Google Ads, Meta Pixel e Google Meu Negócio atualizadas com sucesso.');
+      setMarketingSaveSuccess("Integrações do Google e Meta salvas no banco de dados!");
+      setTimeout(() => setMarketingSaveSuccess(""), 4000);
+    } catch (err: any) {
+      alert("Erro ao salvar integrações de marketing: " + err.message);
+    }
+  };
+
   return (
     <AnimatePresence>
       {isOpen && (
         <>
-          {/* Signed Rental Contract Modal */}
-          <RentalContractModal 
-            booking={contractBooking}
-            isOpen={isContractOpen}
-            onClose={() => { setIsContractOpen(false); setContractBooking(null); }}
-          />
-
           {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
@@ -738,16 +1411,21 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
             className="fixed inset-0 bg-black/85 backdrop-blur-md z-40"
           />
 
-          {/* Slide-over panel container */}
+          {/* Slide-over or Fullscreen panel container */}
           <motion.div
             initial={{ x: "100%" }}
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={{ type: "spring", damping: 25, stiffness: 200 }}
-            className="fixed right-0 top-0 bottom-0 w-full max-w-4xl bg-stone-950 border-l border-white/10 z-50 flex flex-col shadow-2xl text-left overflow-hidden"
+            className={cn(
+              "z-50 flex flex-col bg-stone-950 text-left overflow-hidden transition-all duration-300",
+              isFullScreen
+                ? "fixed inset-0 w-full h-full border-none"
+                : "fixed right-0 top-0 bottom-0 ml-auto w-full max-w-5xl border-l border-white/10 shadow-2xl"
+            )}
           >
             {/* Header */}
-            <div className="p-6 border-b border-white/10 flex items-center justify-between bg-stone-900 shrink-0">
+            <div className="p-4 sm:p-6 border-b border-white/10 flex items-center justify-between bg-stone-900 shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded bg-[#d93838]/10 border border-[#d93838]/30 flex items-center justify-center text-[#d93838]">
                   <User size={18} />
@@ -764,12 +1442,51 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
 
               <div className="flex items-center gap-2">
                 {user && (
-                  <button
-                    onClick={handleLogout}
-                    className="text-zinc-400 hover:text-red-400 font-mono text-[10px] uppercase tracking-wider px-3 py-1.5 border border-white/10 hover:border-red-500/30 rounded transition-all cursor-pointer"
-                  >
-                    Sair
-                  </button>
+                  <>
+                    {/* Session Timeout Indicator */}
+                    <div 
+                      title="Tempo restante de sessão por inatividade (30min)"
+                      className="hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-stone-950 border border-emerald-500/30 rounded font-mono text-[10px] text-emerald-400"
+                    >
+                      <Clock size={12} className="animate-pulse" />
+                      <span>{Math.floor(sessionTimeLeft / 60)}m {sessionTimeLeft % 60}s</span>
+                    </div>
+
+                    {/* Toggle Fullscreen / Windowed Mode */}
+                    <button
+                      onClick={() => setIsFullScreen(!isFullScreen)}
+                      className="text-zinc-300 hover:text-white font-mono text-[10px] uppercase tracking-wider px-2.5 py-1.5 border border-white/10 hover:border-white/30 rounded transition-all cursor-pointer flex items-center gap-1 bg-stone-950"
+                    >
+                      {isFullScreen ? (
+                        <>
+                          <Minimize2 size={13} /> <span className="hidden sm:inline">Gaveta</span>
+                        </>
+                      ) : (
+                        <>
+                          <Maximize2 size={13} /> <span className="hidden sm:inline">Tela Cheia</span>
+                        </>
+                      )}
+                    </button>
+
+                    {/* Alternate to Website View */}
+                    <button
+                      onClick={() => {
+                        setIsFullScreen(false);
+                        onClose();
+                      }}
+                      className="text-zinc-300 hover:text-white font-mono text-[10px] uppercase tracking-wider px-2.5 py-1.5 border border-brand-red/40 hover:border-brand-red rounded transition-all cursor-pointer flex items-center gap-1 bg-brand-red/10"
+                    >
+                      <Globe size={13} className="text-brand-red" />
+                      <span className="hidden sm:inline">Alternar p/ Site</span>
+                    </button>
+
+                    <button
+                      onClick={handleLogout}
+                      className="text-zinc-400 hover:text-red-400 font-mono text-[10px] uppercase tracking-wider px-3 py-1.5 border border-white/10 hover:border-red-500/30 rounded transition-all cursor-pointer"
+                    >
+                      Sair
+                    </button>
+                  </>
                 )}
                 <button
                   onClick={onClose}
@@ -843,15 +1560,60 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
                       <label className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest block mb-1">
                         Senha *
                       </label>
-                      <input
-                        type="password"
-                        required
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="••••••••"
-                        className="w-full bg-stone-900 border border-white/10 px-4 py-2.5 rounded text-xs text-white focus:outline-none focus:border-brand-red"
-                      />
+                      <div className="relative">
+                        <input
+                          type={showPassword ? "text" : "password"}
+                          required
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          placeholder="••••••••"
+                          className="w-full bg-stone-900 border border-white/10 pl-4 pr-10 py-2.5 rounded text-xs text-white focus:outline-none focus:border-brand-red"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white p-1 cursor-pointer"
+                          title={showPassword ? "Ocultar senha" : "Ver senha"}
+                        >
+                          {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                        </button>
+                      </div>
                     </div>
+
+                    {isRegistering && (
+                      <div>
+                        <label className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest block mb-1">
+                          Confirmar Senha *
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showConfirmPassword ? "text" : "password"}
+                            required
+                            value={confirmPassword}
+                            onChange={(e) => setConfirmPassword(e.target.value)}
+                            placeholder="••••••••"
+                            className={`w-full bg-stone-900 border pl-4 pr-10 py-2.5 rounded text-xs text-white focus:outline-none ${
+                              confirmPassword && confirmPassword !== password
+                                ? "border-red-500"
+                                : "border-white/10 focus:border-brand-red"
+                            }`}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white p-1 cursor-pointer"
+                            title={showConfirmPassword ? "Ocultar senha" : "Ver senha"}
+                          >
+                            {showConfirmPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                          </button>
+                        </div>
+                        {confirmPassword && confirmPassword !== password && (
+                          <p className="text-red-400 text-[10px] font-mono mt-1">
+                            ⚠️ As senhas não coincidem.
+                          </p>
+                        )}
+                      </div>
+                    )}
 
                     <button
                       type="submit"
@@ -932,6 +1694,15 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
                           <BarChart2 size={13} className="text-brand-red" /> Métricas & Analytics
                         </button>
                         <button
+                          onClick={() => setActiveTab("admin-marketing")}
+                          className={cn(
+                            "px-4 py-3.5 border-b-2 font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5",
+                            activeTab === "admin-marketing" ? "border-brand-red text-white bg-white/[0.02]" : "border-transparent text-zinc-400 hover:text-white"
+                          )}
+                        >
+                          <Globe size={13} className="text-cyan-400" /> Google & Meta Ads
+                        </button>
+                        <button
                           onClick={() => setActiveTab("admin-bookings")}
                           className={cn(
                             "px-4 py-3.5 border-b-2 font-bold transition-all cursor-pointer whitespace-nowrap",
@@ -952,11 +1723,11 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
                         <button
                           onClick={() => setActiveTab("admin-hero")}
                           className={cn(
-                            "px-4 py-3.5 border-b-2 font-bold transition-all cursor-pointer whitespace-nowrap",
+                            "px-4 py-3.5 border-b-2 font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5",
                             activeTab === "admin-hero" ? "border-brand-red text-white bg-white/[0.02]" : "border-transparent text-zinc-400 hover:text-white"
                           )}
                         >
-                          Banner Hero
+                          <Video size={13} className="text-amber-400" /> Banner & Vídeos
                         </button>
                         <button
                           onClick={() => setActiveTab("admin-spaces")}
@@ -1063,21 +1834,37 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
                                     Sinal de Reserva: {b.depositPaid ? "✅ PAGO" : "🔴 PENDENTE"}
                                   </span>
 
-                                  <div className="flex items-center gap-2">
+                                  <div className="flex flex-wrap items-center gap-2 mt-2 sm:mt-0">
                                     <button
                                       onClick={() => { setContractBooking(b); setIsContractOpen(true); }}
-                                      className="bg-emerald-950/80 hover:bg-emerald-900 text-emerald-400 border border-emerald-500/30 font-mono text-[10px] uppercase tracking-wider px-3 py-1.5 rounded flex items-center gap-1.5 transition-all cursor-pointer font-bold"
+                                      className="bg-stone-800 hover:bg-stone-700 text-emerald-400 border border-emerald-500/30 font-mono text-[10px] uppercase tracking-wider px-3 py-2 rounded flex items-center gap-1.5 transition-all cursor-pointer font-bold"
+                                      title="Baixar ou visualizar contrato e dados da reserva em PDF"
                                     >
-                                      <FileText size={12} /> Contrato de Locação (PDF)
+                                      <FileText size={13} className="text-emerald-400" /> Baixar Dados / Contrato (PDF)
                                     </button>
 
-                                    {!b.depositPaid && (
-                                      <button
-                                        onClick={() => { setBookingToPay(b); setPaymentStep("method"); }}
-                                        className="bg-brand-red hover:bg-red-700 text-white font-mono text-[10px] uppercase px-3.5 py-1.5 rounded font-bold transition-all cursor-pointer"
+                                    <a
+                                      href={`https://wa.me/5511961959349?text=${encodeURIComponent(`Olá! Fiz a reserva #${b.id} no ${b.spaceName} para o dia ${b.date} (${b.timeSlot}). Gostaria de confirmar meu agendamento.`)}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-mono text-[10px] uppercase tracking-wider px-3 py-2 rounded flex items-center gap-1.5 transition-all cursor-pointer font-bold"
+                                    >
+                                      <MessageSquare size={13} /> Falar no WhatsApp
+                                    </a>
+
+                                    {!b.depositPaid ? (
+                                      <a
+                                        href="https://checkout.infinitepay.io/daluz_jef/mHOzh5edeU"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="bg-brand-red hover:bg-red-700 text-white font-mono text-[10px] uppercase tracking-wider px-3.5 py-2 rounded font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow"
                                       >
-                                        Pagar Sinal R$100
-                                      </button>
+                                        <CreditCard size={13} /> Pagar Sinal R$100 (InfinitePay)
+                                      </a>
+                                    ) : (
+                                      <span className="bg-emerald-950 text-emerald-400 border border-emerald-500/30 font-mono text-[10px] uppercase px-3 py-2 rounded font-bold flex items-center gap-1">
+                                        <CheckCircle2 size={13} /> Sinal R$100 Pago
+                                      </span>
                                     )}
                                   </div>
                                 </div>
@@ -1098,6 +1885,19 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
                           <p className="text-zinc-400 text-xs font-sans mt-1">
                             Seu depoimento aparecerá na seção "Quem Faz Acontecer Conosco" na página principal do Estúdio Triângulo.
                           </p>
+
+                          <div className="pt-2">
+                            <a
+                              href={marketingSettings.googleBusinessReviewUrl || DEFAULT_MARKETING_SETTINGS.googleBusinessReviewUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={() => trackConversionEvent("google_review_from_panel")}
+                              className="inline-flex items-center gap-2 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/40 text-amber-300 px-4 py-2.5 rounded text-xs font-mono font-bold transition-all group"
+                            >
+                              <Star size={14} className="fill-amber-400 text-amber-400" />
+                              <span>Avaliar o Estúdio no Google Meu Negócio ↗</span>
+                            </a>
+                          </div>
                         </div>
 
                         {testimonialSuccess && (
@@ -1165,20 +1965,70 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
 
                     {/* CLIENT: PROFILE */}
                     {activeTab === "profile" && (
-                      <div className="bg-stone-900 border border-white/10 p-6 rounded space-y-4">
-                        <h5 className="font-display font-bold text-xs uppercase tracking-wider text-white">Dados do Seu Perfil</h5>
+                      <div className="bg-stone-900 border border-white/10 p-6 rounded space-y-6">
+                        <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                          <div>
+                            <h5 className="font-display font-bold text-xs uppercase tracking-wider text-white">Dados do Seu Perfil</h5>
+                            <p className="text-zinc-400 text-xs mt-0.5">Gerencie suas informações pessoais e foto cadastrada no clube.</p>
+                          </div>
+                          <span className="font-mono text-[9px] bg-emerald-950 text-emerald-400 border border-emerald-500/30 px-2.5 py-1 rounded font-bold uppercase">
+                            Firebase Storage Active
+                          </span>
+                        </div>
+
+                        {/* Photo Upload to Firebase Storage */}
+                        <div className="flex items-center gap-4 bg-stone-950 p-4 rounded border border-white/5">
+                          <img 
+                            src={profileAvatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200"} 
+                            alt="Avatar" 
+                            className="w-16 h-16 rounded-full object-cover border-2 border-brand-red shrink-0" 
+                          />
+                          <div className="space-y-1">
+                            <span className="text-xs font-mono text-zinc-300 font-bold block">Foto do Perfil / Avatar</span>
+                            <p className="text-[10px] text-zinc-500 font-sans">
+                              Envie sua foto diretamente para o Firebase Storage (Spark Gratuito).
+                            </p>
+                            <label className="inline-flex items-center gap-1.5 bg-stone-800 hover:bg-stone-700 text-white font-mono text-[10px] uppercase px-3 py-1.5 rounded font-bold cursor-pointer transition-colors mt-1">
+                              <Upload size={12} className="text-brand-red" /> Alterar Foto
+                              <input 
+                                type="file" 
+                                accept="image/*" 
+                                className="hidden" 
+                                onChange={async (e) => {
+                                  const file = e.target.files?.[0];
+                                  if (!file) return;
+                                  try {
+                                    const url = await uploadFileToStorage(file, "avatars");
+                                    setProfileAvatar(url);
+                                    if (user) {
+                                      await updateDoc(doc(db, "users", user.uid), { avatarUrl: url });
+                                    }
+                                    alert("Foto do perfil atualizada com sucesso no Firebase Storage!");
+                                  } catch (err: any) {
+                                    alert("Erro ao enviar foto: " + err.message);
+                                  }
+                                }}
+                              />
+                            </label>
+                          </div>
+                        </div>
+
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                          <div>
-                            <span className="text-[10px] font-mono text-zinc-500 uppercase block">Nome</span>
-                            <strong className="text-white font-mono">{profileName}</strong>
+                          <div className="bg-stone-950 p-3 rounded border border-white/5">
+                            <span className="text-[10px] font-mono text-zinc-500 uppercase block">Nome Completo</span>
+                            <strong className="text-white font-mono text-sm">{profileName}</strong>
                           </div>
-                          <div>
-                            <span className="text-[10px] font-mono text-zinc-500 uppercase block">E-mail</span>
-                            <strong className="text-white font-mono">{user.email}</strong>
+                          <div className="bg-stone-950 p-3 rounded border border-white/5">
+                            <span className="text-[10px] font-mono text-zinc-500 uppercase block">E-mail de Acesso</span>
+                            <strong className="text-white font-mono text-sm">{user.email}</strong>
                           </div>
-                          <div>
+                          <div className="bg-stone-950 p-3 rounded border border-white/5">
+                            <span className="text-[10px] font-mono text-zinc-500 uppercase block">Telefone / WhatsApp</span>
+                            <strong className="text-white font-mono text-sm">{profilePhone || "Não informado"}</strong>
+                          </div>
+                          <div className="bg-stone-950 p-3 rounded border border-white/5">
                             <span className="text-[10px] font-mono text-zinc-500 uppercase block">Tipo de Conta</span>
-                            <strong className="text-emerald-400 font-mono uppercase">{role}</strong>
+                            <strong className="text-emerald-400 font-mono uppercase text-sm">{role}</strong>
                           </div>
                         </div>
                       </div>
@@ -1204,12 +2054,15 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
                         <form onSubmit={async (e) => {
                           e.preventDefault();
                           if (!newMsg.trim()) return;
+                          const cleanText = sanitizeText(newMsg, 2000);
+                          const cleanSenderName = sanitizeText(profileName, 100) || "Cliente";
+                          if (!cleanText) return;
                           await addDoc(collection(db, "messages"), cleanFirestoreData({
                             id: "msg-" + Date.now(),
                             senderId: user.uid,
-                            senderName: profileName,
+                            senderName: cleanSenderName,
                             recipientId: "admin",
-                            text: newMsg,
+                            text: cleanText,
                             createdAt: new Date().toISOString()
                           }));
                           setNewMsg("");
@@ -1223,6 +2076,236 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
                     {/* ADMIN: ANALYTICS DASHBOARD */}
                     {activeTab === "admin-analytics" && (
                       <AdminAnalyticsDashboard bookings={allBookings} />
+                    )}
+
+                    {/* ADMIN: MARKETING & ADS INTEGRATION CMS */}
+                    {activeTab === "admin-marketing" && (
+                      <div className="space-y-6">
+                        <div className="bg-stone-900 border border-white/10 p-6 rounded space-y-6">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <Globe className="text-cyan-400" size={18} />
+                              <h5 className="font-display font-bold text-xs uppercase tracking-widest text-cyan-400">
+                                Central de Integrações Google & Meta (Gerenciador de Anúncios)
+                              </h5>
+                            </div>
+                            <p className="text-zinc-400 text-xs font-sans mt-1">
+                              Configure as tags do Google Analytics 4, Google Ads Conversions, Meta Pixel (Facebook/Instagram Ads) e Google Meu Negócio para rastrear leads e otimizar campanhas de tráfego pago.
+                            </p>
+                          </div>
+
+                          {marketingSaveSuccess && (
+                            <div className="bg-emerald-950/60 border border-emerald-500/30 text-emerald-300 p-3 rounded text-xs flex items-center gap-2">
+                              <CheckCircle2 size={16} /> {marketingSaveSuccess}
+                            </div>
+                          )}
+
+                          <form onSubmit={handleSaveMarketingSettings} className="space-y-6 text-xs">
+                            {/* STATUS SUMMARY BADGES */}
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 font-mono text-[10px]">
+                              <div className={cn("p-3 rounded border flex flex-col justify-between gap-1", marketingSettings.enableGA4 && marketingSettings.ga4MeasurementId?.startsWith("G-") ? "bg-emerald-950/40 border-emerald-500/30 text-emerald-300" : "bg-stone-950 border-white/10 text-zinc-500")}>
+                                <span className="uppercase text-[9px]">Google Analytics 4</span>
+                                <strong className="text-xs">{marketingSettings.enableGA4 && marketingSettings.ga4MeasurementId?.startsWith("G-") ? "🟢 Conectado" : "⚪ Aguardando ID"}</strong>
+                              </div>
+                              <div className={cn("p-3 rounded border flex flex-col justify-between gap-1", marketingSettings.enableGoogleAds && marketingSettings.googleAdsId?.startsWith("AW-") ? "bg-emerald-950/40 border-emerald-500/30 text-emerald-300" : "bg-stone-950 border-white/10 text-zinc-500")}>
+                                <span className="uppercase text-[9px]">Google Ads</span>
+                                <strong className="text-xs">{marketingSettings.enableGoogleAds && marketingSettings.googleAdsId?.startsWith("AW-") ? "🟢 Conectado" : "⚪ Aguardando ID"}</strong>
+                              </div>
+                              <div className={cn("p-3 rounded border flex flex-col justify-between gap-1", marketingSettings.enableMetaPixel && marketingSettings.metaPixelId && marketingSettings.metaPixelId.length > 5 ? "bg-emerald-950/40 border-emerald-500/30 text-emerald-300" : "bg-stone-950 border-white/10 text-zinc-500")}>
+                                <span className="uppercase text-[9px]">Meta Pixel (FB)</span>
+                                <strong className="text-xs">{marketingSettings.enableMetaPixel && marketingSettings.metaPixelId && marketingSettings.metaPixelId.length > 5 ? "🟢 Conectado" : "⚪ Aguardando ID"}</strong>
+                              </div>
+                              <div className={cn("p-3 rounded border flex flex-col justify-between gap-1", marketingSettings.enableGoogleBusiness ? "bg-emerald-950/40 border-emerald-500/30 text-emerald-300" : "bg-stone-950 border-white/10 text-zinc-500")}>
+                                <span className="uppercase text-[9px]">Google Meu Negócio</span>
+                                <strong className="text-xs">{marketingSettings.enableGoogleBusiness ? "🟢 Ativo no Site" : "⚪ Desativado"}</strong>
+                              </div>
+                            </div>
+
+                            {/* 1. GOOGLE ANALYTICS 4 */}
+                            <div className="p-4 bg-stone-950/80 border border-white/10 rounded space-y-4">
+                              <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                                <label className="font-bold text-white uppercase font-mono flex items-center gap-2">
+                                  <BarChart2 size={14} className="text-emerald-400" /> Google Analytics 4 (GA4)
+                                </label>
+                                <label className="inline-flex items-center gap-2 cursor-pointer font-mono text-[10px] text-zinc-400">
+                                  <input
+                                    type="checkbox"
+                                    checked={marketingSettings.enableGA4 ?? true}
+                                    onChange={(e) => setMarketingSettings({ ...marketingSettings, enableGA4: e.target.checked })}
+                                    className="rounded border-white/20 bg-stone-900 text-brand-red focus:ring-0"
+                                  />
+                                  <span>Ativar GA4 Tag</span>
+                                </label>
+                              </div>
+                              <div>
+                                <label className="text-[10px] font-mono text-zinc-400 uppercase block mb-1">
+                                  ID de Medição do GA4 (Measurement ID)
+                                </label>
+                                <input
+                                  type="text"
+                                  placeholder="Ex: G-ABC123XYZ0"
+                                  value={marketingSettings.ga4MeasurementId || ""}
+                                  onChange={(e) => setMarketingSettings({ ...marketingSettings, ga4MeasurementId: e.target.value })}
+                                  className="w-full bg-stone-900 border border-white/10 p-2.5 rounded text-white font-mono focus:outline-none focus:border-brand-red"
+                                />
+                                <span className="text-[10px] text-zinc-500 font-mono mt-1 block">
+                                  Obtenha no painel do Google Analytics &gt; Admin &gt; Fluxos de Dados (Data Streams).
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* 2. GOOGLE ADS CONVERSION TRACKING */}
+                            <div className="p-4 bg-stone-950/80 border border-white/10 rounded space-y-4">
+                              <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                                <label className="font-bold text-white uppercase font-mono flex items-center gap-2">
+                                  <Zap size={14} className="text-amber-400" /> Google Ads (Conversões de Anúncios)
+                                </label>
+                                <label className="inline-flex items-center gap-2 cursor-pointer font-mono text-[10px] text-zinc-400">
+                                  <input
+                                    type="checkbox"
+                                    checked={marketingSettings.enableGoogleAds ?? true}
+                                    onChange={(e) => setMarketingSettings({ ...marketingSettings, enableGoogleAds: e.target.checked })}
+                                    className="rounded border-white/20 bg-stone-900 text-brand-red focus:ring-0"
+                                  />
+                                  <span>Ativar Google Ads</span>
+                                </label>
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                  <label className="text-[10px] font-mono text-zinc-400 uppercase block mb-1">
+                                    ID da Conta do Google Ads (AW-ID)
+                                  </label>
+                                  <input
+                                    type="text"
+                                    placeholder="Ex: AW-123456789"
+                                    value={marketingSettings.googleAdsId || ""}
+                                    onChange={(e) => setMarketingSettings({ ...marketingSettings, googleAdsId: e.target.value })}
+                                    className="w-full bg-stone-900 border border-white/10 p-2.5 rounded text-white font-mono focus:outline-none focus:border-brand-red"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-[10px] font-mono text-zinc-400 uppercase block mb-1">
+                                    Rótulo / Label da Ação de Conversão
+                                  </label>
+                                  <input
+                                    type="text"
+                                    placeholder="Ex: AW-123456789/aBcD_eFgHiJ"
+                                    value={marketingSettings.googleAdsConversionLabel || ""}
+                                    onChange={(e) => setMarketingSettings({ ...marketingSettings, googleAdsConversionLabel: e.target.value })}
+                                    className="w-full bg-stone-900 border border-white/10 p-2.5 rounded text-white font-mono focus:outline-none focus:border-brand-red"
+                                  />
+                                </div>
+                              </div>
+                              <span className="text-[10px] text-zinc-500 font-mono block">
+                                Dispara automaticamente eventos de conversão no Google Ads quando um cliente agenda uma locação ou entra em contato pelo WhatsApp.
+                              </span>
+                            </div>
+
+                            {/* 3. GERENCIADOR DE ANÚNCIOS (META / FACEBOOK ADS PIXEL) */}
+                            <div className="p-4 bg-stone-950/80 border border-white/10 rounded space-y-4">
+                              <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                                <label className="font-bold text-white uppercase font-mono flex items-center gap-2">
+                                  <Users size={14} className="text-blue-400" /> Gerenciador de Anúncios Meta (Facebook & Instagram Pixel)
+                                </label>
+                                <label className="inline-flex items-center gap-2 cursor-pointer font-mono text-[10px] text-zinc-400">
+                                  <input
+                                    type="checkbox"
+                                    checked={marketingSettings.enableMetaPixel ?? true}
+                                    onChange={(e) => setMarketingSettings({ ...marketingSettings, enableMetaPixel: e.target.checked })}
+                                    className="rounded border-white/20 bg-stone-900 text-brand-red focus:ring-0"
+                                  />
+                                  <span>Ativar Meta Pixel</span>
+                                </label>
+                              </div>
+                              <div>
+                                <label className="text-[10px] font-mono text-zinc-400 uppercase block mb-1">
+                                  ID do Meta Pixel (Gerenciador de Eventos)
+                                </label>
+                                <input
+                                  type="text"
+                                  placeholder="Ex: 123456789012345"
+                                  value={marketingSettings.metaPixelId || ""}
+                                  onChange={(e) => setMarketingSettings({ ...marketingSettings, metaPixelId: e.target.value })}
+                                  className="w-full bg-stone-900 border border-white/10 p-2.5 rounded text-white font-mono focus:outline-none focus:border-brand-red"
+                                />
+                                <span className="text-[10px] text-zinc-500 font-mono mt-1 block">
+                                  O Meta Pixel monitora visualizações de página, conversões de leads do WhatsApp e inícios de agendamento no Facebook e Instagram.
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* 4. GOOGLE MEU NEGÓCIO */}
+                            <div className="p-4 bg-stone-950/80 border border-white/10 rounded space-y-4">
+                              <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                                <label className="font-bold text-white uppercase font-mono flex items-center gap-2">
+                                  <Star size={14} className="text-amber-400" /> Google Meu Negócio (Perfil da Sede e Avaliações 5 Estrelas)
+                                </label>
+                                <label className="inline-flex items-center gap-2 cursor-pointer font-mono text-[10px] text-zinc-400">
+                                  <input
+                                    type="checkbox"
+                                    checked={marketingSettings.enableGoogleBusiness ?? true}
+                                    onChange={(e) => setMarketingSettings({ ...marketingSettings, enableGoogleBusiness: e.target.checked })}
+                                    className="rounded border-white/20 bg-stone-900 text-brand-red focus:ring-0"
+                                  />
+                                  <span>Exibir Selo de Avaliações</span>
+                                </label>
+                              </div>
+
+                              <div className="space-y-3">
+                                <div>
+                                  <label className="text-[10px] font-mono text-zinc-400 uppercase block mb-1">
+                                    Link Direto do Perfil no Google Maps
+                                  </label>
+                                  <input
+                                    type="text"
+                                    placeholder="Ex: https://maps.google.com/?q=Largo+do+Paissandu+72+Sao+Paulo"
+                                    value={marketingSettings.googleBusinessProfileUrl || ""}
+                                    onChange={(e) => setMarketingSettings({ ...marketingSettings, googleBusinessProfileUrl: e.target.value })}
+                                    className="w-full bg-stone-900 border border-white/10 p-2.5 rounded text-white font-mono focus:outline-none focus:border-brand-red text-xs"
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className="text-[10px] font-mono text-zinc-400 uppercase block mb-1">
+                                    Link Direto para Coletar Avaliação de 5 Estrelas
+                                  </label>
+                                  <input
+                                    type="text"
+                                    placeholder="Ex: https://www.google.com/maps/search/?api=1&query=Tri%C3%A2ngulo+Est%C3%BAdio+Fotoclub+Largo+do+Paissandu+72+Sao+Paulo"
+                                    value={marketingSettings.googleBusinessReviewUrl || ""}
+                                    onChange={(e) => setMarketingSettings({ ...marketingSettings, googleBusinessReviewUrl: e.target.value })}
+                                    className="w-full bg-stone-900 border border-white/10 p-2.5 rounded text-white font-mono focus:outline-none focus:border-brand-red text-xs"
+                                  />
+                                  <p className="text-[10px] text-zinc-500 font-sans mt-1">
+                                    Insira a URL do seu perfil no Google Maps, link de avaliação direta do Google (g.page) ou busca da sua empresa no Google.
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* SUBMIT BUTTON */}
+                            <div className="flex items-center justify-between pt-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  trackConversionEvent("admin_test_conversion", { test: true });
+                                  alert("Evento de teste de conversão disparado com sucesso no navegador! Verifique no Console F12 / Tag Assistant / Meta Pixel Helper.");
+                                }}
+                                className="bg-stone-800 hover:bg-stone-700 text-cyan-300 font-mono text-xs uppercase px-4 py-3 rounded font-bold transition-all cursor-pointer border border-cyan-500/30"
+                              >
+                                🧪 Testar Disparo de Evento
+                              </button>
+
+                              <button
+                                type="submit"
+                                className="bg-cyan-600 hover:bg-cyan-500 text-stone-950 font-mono text-xs uppercase px-6 py-3 rounded font-bold transition-all cursor-pointer shadow-lg"
+                              >
+                                Salvar Integrações
+                              </button>
+                            </div>
+                          </form>
+                        </div>
+                      </div>
                     )}
 
                     {/* ADMIN: BOOKINGS AGENDA & CONTRACT VIEW */}
@@ -1249,8 +2332,8 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
                               </div>
 
                               <div className="border-t border-white/5 pt-3 flex flex-wrap items-center justify-between gap-2">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-[10px] font-mono text-zinc-500 uppercase">Alterar Status:</span>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-[10px] font-mono text-zinc-500 uppercase">Status:</span>
                                   {["Simulada", "Pendente", "Reservada", "Concluída", "Cancelada"].map((st) => (
                                     <button
                                       key={st}
@@ -1267,12 +2350,31 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
                                   ))}
                                 </div>
 
-                                <button
-                                  onClick={() => { setContractBooking(b); setIsContractOpen(true); }}
-                                  className="bg-emerald-950 hover:bg-emerald-900 text-emerald-400 border border-emerald-500/30 text-[10px] font-mono uppercase px-3 py-1.5 rounded flex items-center gap-1.5 cursor-pointer font-bold"
-                                >
-                                  <Download size={12} className="text-brand-red" /> Baixar Contrato PDF
-                                </button>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <button
+                                    onClick={() => { setContractBooking(b); setIsContractOpen(true); }}
+                                    className="bg-emerald-950 hover:bg-emerald-900 text-emerald-400 border border-emerald-500/30 text-[10px] font-mono uppercase px-2.5 py-1 rounded flex items-center gap-1.5 cursor-pointer font-bold transition-all"
+                                    title="Baixar Contrato Oficial em PDF"
+                                  >
+                                    <Download size={12} className="text-emerald-400" /> Contrato PDF
+                                  </button>
+
+                                  <button
+                                    onClick={() => handleCancelBooking(b.id, b.clientName)}
+                                    className="bg-amber-950 hover:bg-amber-900 text-amber-400 border border-amber-500/30 text-[10px] font-mono uppercase px-2.5 py-1 rounded flex items-center gap-1.5 cursor-pointer font-bold transition-all"
+                                    title="Cancelar esta locação"
+                                  >
+                                    <AlertTriangle size={12} className="text-amber-400" /> Cancelar
+                                  </button>
+
+                                  <button
+                                    onClick={() => handleDeleteBooking(b.id, b.clientName)}
+                                    className="bg-red-950 hover:bg-red-900 text-red-400 border border-red-500/30 text-[10px] font-mono uppercase px-2.5 py-1 rounded flex items-center gap-1.5 cursor-pointer font-bold transition-all"
+                                    title="Excluir permanentemente esta locação"
+                                  >
+                                    <Trash2 size={12} className="text-red-400" /> Excluir
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           ))}
@@ -1288,7 +2390,7 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
                             <Users size={16} /> Gestão de Usuários & Estatísticas por Fotógrafo
                           </h5>
                           <p className="text-zinc-400 text-xs font-sans mt-1">
-                            Acompanhe quantas vezes o mesmo fotógrafo locou, histórico completo de reservas e permissões de acesso.
+                            Acompanhe quantas vezes o mesmo fotógrafo locou, histórico completo de reservas, bloqueios de conta e exclusão.
                           </p>
                         </div>
 
@@ -1368,36 +2470,56 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
                           </div>
                         </div>
 
-                        {/* Registered Users List & Role / Block Controls */}
+                        {/* Registered Users List & Role / Block / Delete Controls */}
                         <div className="bg-stone-900 border border-white/10 rounded p-4 space-y-3">
                           <h6 className="font-mono text-[10px] text-zinc-400 uppercase font-bold tracking-wider">
-                            Controle de Acessos e Status da Conta:
+                            Controle de Acessos, Bloqueio e Exclusão de Contas:
                           </h6>
                           <div className="space-y-2">
                             {usersList.map((u) => (
-                              <div key={u.id} className="bg-stone-950 p-3 rounded border border-white/5 flex items-center justify-between text-xs">
+                              <div key={u.id} className="bg-stone-950 p-3 rounded border border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
                                 <div>
-                                  <span className="font-bold text-white block">{u.name || "Fotógrafo"}</span>
-                                  <span className="text-[10px] text-zinc-500 font-mono block">{u.email} • {u.phone || "Sem tel"}</span>
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-bold text-white block">{u.name || "Fotógrafo / Cliente"}</span>
+                                    {u.isBlocked && (
+                                      <span className="bg-red-950 text-red-400 border border-red-500/40 text-[9px] font-mono uppercase px-1.5 py-0.5 rounded font-bold">
+                                        BLOQUEADO
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className="text-[10px] text-zinc-500 font-mono block mt-0.5">{u.email} • {u.phone || "Sem telefone"}</span>
                                 </div>
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 flex-wrap">
                                   <button
                                     onClick={() => handleToggleUserAdmin(u.id, u.role)}
                                     className={cn(
                                       "px-2.5 py-1 rounded text-[9px] font-mono uppercase font-bold border transition-all cursor-pointer",
-                                      u.role === "admin" ? "bg-purple-950 text-purple-400 border-purple-500/30" : "bg-stone-900 text-zinc-400 border-white/10"
+                                      u.role === "admin" ? "bg-purple-950 text-purple-400 border-purple-500/30" : "bg-stone-900 text-zinc-400 border-white/10 hover:text-white"
                                     )}
+                                    title="Alternar entre Administrador e Cliente"
                                   >
                                     {u.role === "admin" ? "ADMIN" : "CLIENTE"}
                                   </button>
                                   <button
-                                    onClick={() => handleToggleUserBlock(u.id, u.isBlocked)}
+                                    onClick={() => handleToggleUserBlock(u.id, u.name || u.email, u.isBlocked)}
                                     className={cn(
-                                      "px-2.5 py-1 rounded text-[9px] font-mono uppercase font-bold border transition-all cursor-pointer",
-                                      u.isBlocked ? "bg-red-950 text-red-400 border-red-500/30" : "bg-emerald-950 text-emerald-400 border-emerald-500/30"
+                                      "px-2.5 py-1 rounded text-[9px] font-mono uppercase font-bold border transition-all cursor-pointer flex items-center gap-1",
+                                      u.isBlocked 
+                                        ? "bg-amber-950 text-amber-400 border-amber-500/30 hover:bg-amber-900" 
+                                        : "bg-red-950/60 text-red-400 border-red-500/30 hover:bg-red-900"
                                     )}
+                                    title={u.isBlocked ? "Desbloquear usuário" : "Bloquear usuário"}
                                   >
-                                    {u.isBlocked ? "BLOQUEADO" : "ATIVO"}
+                                    <Lock size={10} />
+                                    {u.isBlocked ? "DESBLOQUEAR" : "BLOQUEAR"}
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteUser(u.id, u.name || "Sem Nome", u.email)}
+                                    className="bg-stone-900 hover:bg-red-950 text-red-400 border border-red-500/30 hover:border-red-500/60 px-2.5 py-1 rounded text-[9px] font-mono uppercase font-bold flex items-center gap-1 cursor-pointer transition-all"
+                                    title="Excluir cadastro do usuário"
+                                  >
+                                    <Trash2 size={10} />
+                                    EXCLUIR
                                   </button>
                                 </div>
                               </div>
@@ -1409,7 +2531,8 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
 
                     {/* ADMIN: HERO BANNER CMS */}
                     {activeTab === "admin-hero" && (
-                      <div className="bg-stone-900 border border-white/10 p-6 rounded space-y-6">
+                      <div className="space-y-6">
+                        <div className="bg-stone-900 border border-white/10 p-6 rounded space-y-6">
                         <div>
                           <h5 className="font-display font-bold text-xs uppercase tracking-widest text-[#d93838]">Controle Total da Seção Banner Hero</h5>
                           <p className="text-zinc-400 text-xs font-sans mt-1">Altere o título principal, textos em destaque, imagem de fundo e botões da página inicial.</p>
@@ -1462,14 +2585,162 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
                             />
                           </div>
 
-                          <div>
-                            <label className="text-[10px] font-mono text-zinc-400 uppercase block mb-1">URL da Imagem de Fundo</label>
-                            <input
-                              type="text"
-                              value={heroSettings.bgImage}
-                              onChange={(e) => setHeroSettings({ ...heroSettings, bgImage: e.target.value })}
-                              className="w-full bg-stone-950 border border-white/10 p-2.5 rounded text-white font-mono focus:outline-none focus:border-brand-red"
-                            />
+                          {/* UPLOAD & GESTÃO DE FOTOS DO CARROSSEL HERO (ATÉ 10 FOTOS COM CONVERSÃO WEBP AUTOMÁTICA) */}
+                          <div className="bg-stone-950 p-4 sm:p-5 rounded border border-white/10 space-y-4 text-xs">
+                            <div className="flex items-center justify-between flex-wrap gap-2">
+                              <div>
+                                <span className="font-mono text-xs text-white uppercase font-bold flex items-center gap-2">
+                                  <ImageIcon size={16} className="text-[#d93838]" /> Carrossel de Fotos do Banner Hero ({heroSettings.heroPhotos.length}/10 Fotos)
+                                </span>
+                                <p className="text-zinc-400 text-[11px] mt-0.5 font-sans">
+                                  Anexe até 10 fotos. Todas as imagens enviadas são convertidas automaticamente em **WebP ultra-otimizado** e geram versão leve para dispositivos móveis.
+                                </p>
+                              </div>
+                              <span className="text-[10px] font-mono bg-stone-900 border border-white/10 text-emerald-400 px-2.5 py-1 rounded flex items-center gap-1">
+                                <Sparkles size={12} /> Auto-conversão WebP Ativa
+                              </span>
+                            </div>
+
+                            {/* Área de Seleção e Soltar de Arquivos */}
+                            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+                              <div className="md:col-span-8">
+                                <label
+                                  onDragOver={(e) => e.preventDefault()}
+                                  onDrop={(e) => {
+                                    e.preventDefault();
+                                    if (e.dataTransfer.files) {
+                                      handleHeroBannerFilesSelected(e.dataTransfer.files);
+                                    }
+                                  }}
+                                  className="border-2 border-dashed border-white/15 hover:border-[#d93838]/60 bg-stone-900/80 p-4 rounded text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1 block"
+                                >
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    multiple
+                                    disabled={isUploadingHeroBanner || heroSettings.heroPhotos.length >= 10}
+                                    onChange={(e) => {
+                                      if (e.target.files) {
+                                        handleHeroBannerFilesSelected(e.target.files);
+                                        e.target.value = "";
+                                      }
+                                    }}
+                                    className="hidden"
+                                  />
+                                  <div className="flex items-center gap-2 text-zinc-300 font-medium text-xs">
+                                    <Upload size={16} className="text-[#d93838]" />
+                                    <span>Clique para selecionar ou arraste até 10 fotos (JPG, PNG, WebP)</span>
+                                  </div>
+                                  <p className="text-[10px] font-mono text-zinc-500">
+                                    Conversão automática instantânea para WebP HD + WebP Mobile.
+                                  </p>
+                                </label>
+                              </div>
+
+                              <div className="md:col-span-4">
+                                <label className="block w-full">
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    multiple
+                                    disabled={isUploadingHeroBanner || heroSettings.heroPhotos.length >= 10}
+                                    onChange={(e) => {
+                                      if (e.target.files) {
+                                        handleHeroBannerFilesSelected(e.target.files);
+                                        e.target.value = "";
+                                      }
+                                    }}
+                                    className="hidden"
+                                  />
+                                  <div className={cn(
+                                    "w-full bg-[#d93838] hover:bg-red-700 text-white font-mono text-xs uppercase font-bold py-3 px-4 rounded transition-all cursor-pointer flex items-center justify-center gap-2 shadow-md shadow-[#d93838]/20 text-center",
+                                    (isUploadingHeroBanner || heroSettings.heroPhotos.length >= 10) && "opacity-50 cursor-not-allowed"
+                                  )}>
+                                    {isUploadingHeroBanner ? (
+                                      <>
+                                        <RefreshCw size={14} className="animate-spin" />
+                                        Otimizando WebP...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Camera size={15} />
+                                        Anexar Fotos ({heroSettings.heroPhotos.length}/10)
+                                      </>
+                                    )}
+                                  </div>
+                                </label>
+                              </div>
+                            </div>
+
+                            {/* Lista de Fotos do Carrossel Hero */}
+                            <div className="space-y-3 pt-2">
+                              <span className="font-mono text-[10px] text-zinc-400 uppercase font-bold block">
+                                Fotos Cadastradas no Carrossel (Arraste ou use os botões para reordenar):
+                              </span>
+
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[480px] overflow-y-auto pr-1">
+                                {heroSettings.heroPhotos.map((photo, idx) => (
+                                  <div key={idx} className="bg-stone-900 p-3 rounded border border-white/10 flex gap-3 items-start group hover:border-[#d93838]/50 transition-all">
+                                    {/* Preview Thumbnail */}
+                                    <div className="relative w-20 h-16 rounded overflow-hidden bg-black flex-shrink-0 border border-white/10">
+                                      <img src={photo.url} alt={photo.caption || "Hero Banner"} className="w-full h-full object-cover" />
+                                      <span className="absolute top-1 left-1 bg-black/80 text-[#d93838] font-mono text-[9px] px-1.5 py-0.5 rounded font-bold border border-white/10">
+                                        #{idx + 1}
+                                      </span>
+                                    </div>
+
+                                    {/* Controls & Inputs */}
+                                    <div className="flex-grow space-y-1.5 min-w-0">
+                                      <input
+                                        type="text"
+                                        value={photo.caption || ""}
+                                        onChange={(e) => {
+                                          const updated = [...heroSettings.heroPhotos];
+                                          updated[idx].caption = e.target.value;
+                                          setHeroSettings({ ...heroSettings, heroPhotos: updated });
+                                        }}
+                                        placeholder="Legenda / Título da foto no carrossel..."
+                                        className="w-full bg-stone-950 border border-white/10 p-1.5 rounded text-white text-xs font-medium focus:outline-none focus:border-[#d93838]"
+                                      />
+
+                                      <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400 pt-0.5">
+                                        <span className="truncate max-w-[120px] text-emerald-400">
+                                          ✓ WebP Otimizado
+                                        </span>
+                                        <div className="flex items-center gap-1">
+                                          <button
+                                            type="button"
+                                            onClick={() => handleMoveHeroPhoto(idx, "up")}
+                                            disabled={idx === 0}
+                                            className="px-1.5 py-0.5 bg-stone-800 hover:bg-stone-700 disabled:opacity-30 rounded text-zinc-300"
+                                            title="Mover para cima"
+                                          >
+                                            ▲
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleMoveHeroPhoto(idx, "down")}
+                                            disabled={idx === heroSettings.heroPhotos.length - 1}
+                                            className="px-1.5 py-0.5 bg-stone-800 hover:bg-stone-700 disabled:opacity-30 rounded text-zinc-300"
+                                            title="Mover para baixo"
+                                          >
+                                            ▼
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleRemoveHeroPhoto(idx)}
+                                            className="p-1 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded ml-1"
+                                            title="Remover foto"
+                                          >
+                                            <Trash2 size={12} />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
                           </div>
 
                           <div className="grid grid-cols-2 gap-3">
@@ -1495,52 +2766,804 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
 
                           <button
                             onClick={handleSaveHeroSettings}
-                            className="bg-brand-red hover:bg-red-700 text-white font-mono text-xs uppercase px-6 py-3 rounded font-bold transition-all cursor-pointer"
+                            className="bg-brand-red hover:bg-red-700 text-white font-mono text-xs uppercase px-6 py-3 rounded font-bold transition-all cursor-pointer flex items-center gap-2"
                           >
-                            Salvar Alterações do Banner Hero
+                            <CheckCircle2 size={16} /> Salvar Alterações do Banner Hero
                           </button>
                         </div>
                       </div>
+
+                      {/* SEÇÃO CONCEITO & VÍDEOS DA LOCAÇÃO CMS */}
+                      <div className="bg-stone-900 border border-white/10 p-6 rounded space-y-6">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <Video className="text-[#d93838]" size={18} />
+                            <h5 className="font-display font-bold text-xs uppercase tracking-widest text-[#d93838]">
+                              Seção Conceito & Vídeos da Locação (Até 5 Vídeos)
+                            </h5>
+                          </div>
+                          <p className="text-zinc-400 text-xs font-sans mt-1">
+                            Cadastre até 5 vídeos da locação para alternar automaticamente na página principal, e edite todos os textos da seção sobre nós.
+                          </p>
+                        </div>
+
+                        {conceptSaveSuccess && (
+                          <div className="bg-emerald-950/60 border border-emerald-500/30 text-emerald-300 p-3 rounded text-xs flex items-center gap-2">
+                            <CheckCircle2 size={16} /> {conceptSaveSuccess}
+                          </div>
+                        )}
+
+                        <div className="space-y-6 text-xs">
+                          {/* VÍDEOS CAROUSEL MANAGEMENT */}
+                          <div className="p-4 bg-stone-950/70 border border-white/10 rounded space-y-4">
+                            <div className="flex items-center justify-between">
+                              <label className="text-xs font-bold text-white uppercase font-mono flex items-center gap-2">
+                                <Video size={14} className="text-amber-400" /> Vídeos da Locação ({conceptSettings.videoUrls.length}/5)
+                              </label>
+                              {conceptSettings.videoUrls.length < 5 && (
+                                <button
+                                  type="button"
+                                  onClick={handleAddVideoUrlField}
+                                  className="bg-white/10 hover:bg-white/20 text-white font-mono text-[10px] uppercase px-3 py-1.5 rounded flex items-center gap-1 transition-all cursor-pointer"
+                                >
+                                  <Plus size={12} /> Adicionar Vídeo
+                                </button>
+                              )}
+                            </div>
+
+                            <div className="space-y-3">
+                              {conceptSettings.videoUrls.map((url, index) => (
+                                <div key={index} className="flex items-center gap-2">
+                                  <span className="text-[10px] font-mono text-zinc-500 w-16 shrink-0">
+                                    Vídeo #{index + 1}
+                                  </span>
+                                  <input
+                                    type="text"
+                                    value={url}
+                                    onChange={(e) => handleUpdateVideoUrlField(index, e.target.value)}
+                                    placeholder="Cole aqui o link do YouTube, Vimeo ou Embed"
+                                    className="flex-1 bg-stone-900 border border-white/10 p-2.5 rounded text-white font-mono focus:outline-none focus:border-brand-red text-xs"
+                                  />
+                                  {conceptSettings.videoUrls.length > 1 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveVideoUrlField(index)}
+                                      className="p-2.5 bg-red-950/50 hover:bg-red-900/80 text-red-400 rounded border border-red-500/20 transition-all cursor-pointer shrink-0"
+                                      title="Remover este vídeo"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+
+                            <div className="text-[11px] text-zinc-400 bg-white/[0.02] p-3 rounded border border-white/5 space-y-1">
+                              <p className="font-semibold text-white">💡 Como funciona a alternância de vídeos?</p>
+                              <p>• Se houver apenas 1 vídeo cadastrado, ele é exibido fixo na seção Conceito.</p>
+                              <p>• Se cadastrar de 2 até 5 vídeos, o site irá alternar automaticamente entre eles a cada 9 segundos ou pelos botões de navegação do carrossel.</p>
+                              <p>• Links do YouTube (normais, shorts ou embed) são formatados e otimizados automaticamente para exibição em iFrame.</p>
+                            </div>
+                          </div>
+
+                          {/* TEXTOS PRINCIPAIS */}
+                          <div className="space-y-3 pt-2">
+                            <h6 className="font-bold text-white text-xs uppercase font-mono tracking-wider text-amber-400">
+                              Textos Principais da Seção
+                            </h6>
+
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="text-[10px] font-mono text-zinc-400 uppercase block mb-1">Selo / Badge</label>
+                                <input
+                                  type="text"
+                                  value={conceptSettings.badge}
+                                  onChange={(e) => setConceptSettings({ ...conceptSettings, badge: e.target.value })}
+                                  className="w-full bg-stone-950 border border-white/10 p-2.5 rounded text-white font-mono"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[10px] font-mono text-zinc-400 uppercase block mb-1">Título Principal</label>
+                                <input
+                                  type="text"
+                                  value={conceptSettings.title}
+                                  onChange={(e) => setConceptSettings({ ...conceptSettings, title: e.target.value })}
+                                  className="w-full bg-stone-950 border border-white/10 p-2.5 rounded text-white font-mono"
+                                />
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="text-[10px] font-mono text-zinc-400 uppercase block mb-1">Descrição / Manifesto Sobre Nós</label>
+                              <textarea
+                                rows={4}
+                                value={conceptSettings.description}
+                                onChange={(e) => setConceptSettings({ ...conceptSettings, description: e.target.value })}
+                                className="w-full bg-stone-950 border border-white/10 p-2.5 rounded text-white font-mono"
+                              />
+                            </div>
+                          </div>
+
+                          {/* OS 3 PILARES */}
+                          <div className="space-y-3 pt-2 border-t border-white/10">
+                            <h6 className="font-bold text-white text-xs uppercase font-mono tracking-wider text-amber-400">
+                              Os 3 Pilares Fundamentais
+                            </h6>
+
+                            <div className="space-y-3">
+                              <div className="grid grid-cols-3 gap-2">
+                                <div className="col-span-1">
+                                  <label className="text-[10px] font-mono text-zinc-400 uppercase block mb-1">Pilar 1 Título</label>
+                                  <input
+                                    type="text"
+                                    value={conceptSettings.pillar1Title}
+                                    onChange={(e) => setConceptSettings({ ...conceptSettings, pillar1Title: e.target.value })}
+                                    className="w-full bg-stone-950 border border-white/10 p-2 rounded text-white font-mono"
+                                  />
+                                </div>
+                                <div className="col-span-2">
+                                  <label className="text-[10px] font-mono text-zinc-400 uppercase block mb-1">Pilar 1 Descrição</label>
+                                  <input
+                                    type="text"
+                                    value={conceptSettings.pillar1Desc}
+                                    onChange={(e) => setConceptSettings({ ...conceptSettings, pillar1Desc: e.target.value })}
+                                    className="w-full bg-stone-950 border border-white/10 p-2 rounded text-white font-mono"
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-3 gap-2">
+                                <div className="col-span-1">
+                                  <label className="text-[10px] font-mono text-zinc-400 uppercase block mb-1">Pilar 2 Título</label>
+                                  <input
+                                    type="text"
+                                    value={conceptSettings.pillar2Title}
+                                    onChange={(e) => setConceptSettings({ ...conceptSettings, pillar2Title: e.target.value })}
+                                    className="w-full bg-stone-950 border border-white/10 p-2 rounded text-white font-mono"
+                                  />
+                                </div>
+                                <div className="col-span-2">
+                                  <label className="text-[10px] font-mono text-zinc-400 uppercase block mb-1">Pilar 2 Descrição</label>
+                                  <input
+                                    type="text"
+                                    value={conceptSettings.pillar2Desc}
+                                    onChange={(e) => setConceptSettings({ ...conceptSettings, pillar2Desc: e.target.value })}
+                                    className="w-full bg-stone-950 border border-white/10 p-2 rounded text-white font-mono"
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-3 gap-2">
+                                <div className="col-span-1">
+                                  <label className="text-[10px] font-mono text-zinc-400 uppercase block mb-1">Pilar 3 Título</label>
+                                  <input
+                                    type="text"
+                                    value={conceptSettings.pillar3Title}
+                                    onChange={(e) => setConceptSettings({ ...conceptSettings, pillar3Title: e.target.value })}
+                                    className="w-full bg-stone-950 border border-white/10 p-2 rounded text-white font-mono"
+                                  />
+                                </div>
+                                <div className="col-span-2">
+                                  <label className="text-[10px] font-mono text-zinc-400 uppercase block mb-1">Pilar 3 Descrição</label>
+                                  <input
+                                    type="text"
+                                    value={conceptSettings.pillar3Desc}
+                                    onChange={(e) => setConceptSettings({ ...conceptSettings, pillar3Desc: e.target.value })}
+                                    className="w-full bg-stone-950 border border-white/10 p-2 rounded text-white font-mono"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* EXPOSIÇÃO FOTOGRÁFICA */}
+                          <div className="space-y-3 pt-2 border-t border-white/10">
+                            <h6 className="font-bold text-white text-xs uppercase font-mono tracking-wider text-amber-400">
+                              Triângulo de Exposição (ISO, Diafragma, Obturador)
+                            </h6>
+
+                            <div className="grid grid-cols-3 gap-3">
+                              <div className="space-y-2">
+                                <label className="text-[10px] font-mono text-zinc-400 uppercase block">ISO Título</label>
+                                <input
+                                  type="text"
+                                  value={conceptSettings.isoTitle}
+                                  onChange={(e) => setConceptSettings({ ...conceptSettings, isoTitle: e.target.value })}
+                                  className="w-full bg-stone-950 border border-white/10 p-2 rounded text-white font-mono"
+                                />
+                                <textarea
+                                  rows={2}
+                                  value={conceptSettings.isoDesc}
+                                  onChange={(e) => setConceptSettings({ ...conceptSettings, isoDesc: e.target.value })}
+                                  className="w-full bg-stone-950 border border-white/10 p-2 rounded text-white font-mono"
+                                />
+                              </div>
+
+                              <div className="space-y-2">
+                                <label className="text-[10px] font-mono text-zinc-400 uppercase block">Diafragma Título</label>
+                                <input
+                                  type="text"
+                                  value={conceptSettings.diafragmaTitle}
+                                  onChange={(e) => setConceptSettings({ ...conceptSettings, diafragmaTitle: e.target.value })}
+                                  className="w-full bg-stone-950 border border-white/10 p-2 rounded text-white font-mono"
+                                />
+                                <textarea
+                                  rows={2}
+                                  value={conceptSettings.diafragmaDesc}
+                                  onChange={(e) => setConceptSettings({ ...conceptSettings, diafragmaDesc: e.target.value })}
+                                  className="w-full bg-stone-950 border border-white/10 p-2 rounded text-white font-mono"
+                                />
+                              </div>
+
+                              <div className="space-y-2">
+                                <label className="text-[10px] font-mono text-zinc-400 uppercase block">Obturador Título</label>
+                                <input
+                                  type="text"
+                                  value={conceptSettings.obturadorTitle}
+                                  onChange={(e) => setConceptSettings({ ...conceptSettings, obturadorTitle: e.target.value })}
+                                  className="w-full bg-stone-950 border border-white/10 p-2 rounded text-white font-mono"
+                                />
+                                <textarea
+                                  rows={2}
+                                  value={conceptSettings.obturadorDesc}
+                                  onChange={(e) => setConceptSettings({ ...conceptSettings, obturadorDesc: e.target.value })}
+                                  className="w-full bg-stone-950 border border-white/10 p-2 rounded text-white font-mono"
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={handleSaveConceptSettings}
+                            className="w-full bg-brand-red hover:bg-red-700 text-white font-mono text-xs uppercase py-3.5 rounded font-bold transition-all cursor-pointer flex items-center justify-center gap-2 shadow-lg"
+                          >
+                            <Check size={16} /> Salvar Seção Conceito & Vídeos da Locação
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                     )}
 
                     {/* ADMIN: NOSSO ESPAÇO CMS */}
                     {activeTab === "admin-spaces" && (
-                      <div className="space-y-6">
-                        <div className="bg-stone-900 border border-white/10 p-6 rounded space-y-4">
-                          <h5 className="font-display font-bold text-xs uppercase tracking-widest text-[#d93838]">Cadastrar Novo Espaço ou Editar Existente</h5>
-                          {spaceSaveMsg && <div className="text-emerald-400 font-mono text-xs">{spaceSaveMsg}</div>}
-                          
-                          <form onSubmit={handleAddSpace} className="space-y-3 text-xs">
-                            <input type="text" required value={newSpaceName} onChange={(e) => setNewSpaceName(e.target.value)} placeholder="Nome do Espaço (ex: Triângulo Estúdio - Prisma)" className="w-full bg-stone-950 border border-white/10 p-2.5 rounded text-white" />
-                            <input type="text" value={newSpaceSubtitle} onChange={(e) => setNewSpaceSubtitle(e.target.value)} placeholder="Subtítulo Curto" className="w-full bg-stone-950 border border-white/10 p-2.5 rounded text-white" />
-                            <textarea rows={3} value={newSpaceDesc} onChange={(e) => setNewSpaceDesc(e.target.value)} placeholder="Descrição completa da infraestrutura..." className="w-full bg-stone-950 border border-white/10 p-2.5 rounded text-white" />
-                            <div className="grid grid-cols-3 gap-3">
-                              <input type="number" value={newSpaceHourly} onChange={(e) => setNewSpaceHourly(Number(e.target.value))} placeholder="Valor/Hora (R$)" className="bg-stone-950 border border-white/10 p-2 rounded text-white" />
-                              <input type="number" value={newSpaceHalfDay} onChange={(e) => setNewSpaceHalfDay(Number(e.target.value))} placeholder="Turno 4h (R$)" className="bg-stone-950 border border-white/10 p-2 rounded text-white" />
-                              <input type="number" value={newSpaceFullDay} onChange={(e) => setNewSpaceFullDay(Number(e.target.value))} placeholder="Diária 8h (R$)" className="bg-stone-950 border border-white/10 p-2 rounded text-white" />
+                      <div className="space-y-8">
+                        
+                        {/* HEADER DA SEÇÃO NOSSO ESPAÇO */}
+                        <div className="bg-stone-900 border border-[#d93838]/30 p-6 rounded space-y-2">
+                          <div className="flex items-center justify-between">
+                            <h5 className="font-display font-bold text-sm uppercase tracking-widest text-[#d93838] flex items-center gap-2">
+                              <Camera size={18} /> Gestão Completa da Seção "Nosso Espaço"
+                            </h5>
+                            <span className="bg-[#d93838]/10 text-[#d93838] text-[10px] font-mono px-2.5 py-1 rounded border border-[#d93838]/30 font-bold">
+                              {spacePhotos.length} Fotos no Carrossel
+                            </span>
+                          </div>
+                          <p className="text-zinc-400 text-xs font-sans">
+                            Gerencie o carrossel de fotos (adicionar, remover, editar e reordenar fotos), altere textos de apresentação, valores de hora/diária, regras do estúdio e links para download do manual.
+                          </p>
+                        </div>
+
+                        {/* BLOCO 1: CARROSSEL DE FOTOS */}
+                        <div className="bg-stone-900 border border-white/10 p-6 rounded space-y-6">
+                          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/10 pb-4">
+                            <div>
+                              <h6 className="font-display font-bold text-xs uppercase tracking-widest text-white flex items-center gap-2">
+                                <ImageIcon size={16} className="text-[#d93838]" /> Galeria & Carrossel de Fotos do Estúdio
+                              </h6>
+                              <p className="text-zinc-400 text-[11px] mt-0.5">
+                                Anexe fotos do seu dispositivo (computador/celular), edite legendas ou reordene a exibição no carrossel.
+                              </p>
                             </div>
-                            <input type="text" value={newSpaceFeatures} onChange={(e) => setNewSpaceFeatures(e.target.value)} placeholder="Diferenciais separados por vírgula" className="w-full bg-stone-950 border border-white/10 p-2.5 rounded text-white" />
-                            <button type="submit" className="bg-brand-red text-white font-mono text-xs uppercase px-5 py-2.5 rounded font-bold">Salvar Espaço</button>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <button
+                                type="button"
+                                onClick={handleResetGalleryToDefault}
+                                className="bg-stone-950 hover:bg-stone-800 text-zinc-400 hover:text-white border border-white/10 text-[10px] font-mono px-3 py-2 rounded transition-all cursor-pointer"
+                              >
+                                Restaurar 28 Fotos Originais
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleSaveSpaceGallery}
+                                className="bg-[#d93838] hover:bg-red-700 text-white font-mono text-xs uppercase font-bold px-4 py-2 rounded transition-all cursor-pointer flex items-center gap-1.5 shadow-md shadow-[#d93838]/20"
+                              >
+                                <Check size={14} /> Salvar Galeria ({spacePhotos.length})
+                              </button>
+                            </div>
+                          </div>
+
+                          {gallerySaveMsg && (
+                            <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 p-3 rounded text-xs font-mono flex items-center gap-2">
+                              <CheckCircle2 size={16} /> {gallerySaveMsg}
+                            </div>
+                          )}
+
+                          {/* Seção de Upload Direto de Fotos */}
+                          <div className="bg-stone-950 p-4 sm:p-5 rounded border border-white/10 space-y-4 text-xs">
+                            <div className="flex items-center justify-between flex-wrap gap-2">
+                              <span className="font-mono text-[11px] text-white uppercase font-bold flex items-center gap-2">
+                                <Upload size={16} className="text-[#d93838]" /> Upload & Anexo de Fotos do Estúdio
+                              </span>
+                              <span className="text-[10px] font-mono text-zinc-500">
+                                Formatos aceitos: JPG, PNG, WebP, GIF
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+                              <div className="md:col-span-8">
+                                <label className="text-[10px] font-mono text-zinc-400 uppercase block mb-1">
+                                  Legenda Padrão para Novas Fotos (Opcional)
+                                </label>
+                                <input
+                                  type="text"
+                                  value={newPhotoCaption}
+                                  onChange={(e) => setNewPhotoCaption(e.target.value)}
+                                  placeholder="Ex: Fundo Infinito, Sala Principal, Equipamentos..."
+                                  className="w-full bg-stone-900 border border-white/10 p-2.5 rounded text-white text-xs focus:border-[#d93838] focus:outline-none"
+                                />
+                              </div>
+
+                              <div className="md:col-span-4">
+                                <label className="block w-full">
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    multiple
+                                    disabled={isUploadingPhoto}
+                                    onChange={(e) => {
+                                      if (e.target.files) {
+                                        handlePhotoFilesSelected(e.target.files);
+                                        e.target.value = "";
+                                      }
+                                    }}
+                                    className="hidden"
+                                  />
+                                  <div className={cn(
+                                    "w-full bg-[#d93838] hover:bg-red-700 text-white font-mono text-xs uppercase font-bold py-2.5 px-4 rounded transition-all cursor-pointer flex items-center justify-center gap-2 shadow-md shadow-[#d93838]/20 text-center",
+                                    isUploadingPhoto && "opacity-50 cursor-wait"
+                                  )}>
+                                    {isUploadingPhoto ? (
+                                      <>
+                                        <RefreshCw size={14} className="animate-spin" />
+                                        Processando Fotos...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Upload size={15} />
+                                        Selecionar Foto(s)
+                                      </>
+                                    )}
+                                  </div>
+                                </label>
+                              </div>
+                            </div>
+
+                            {/* Drop Zone Interativa */}
+                            <div
+                              onDragOver={(e) => e.preventDefault()}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                if (e.dataTransfer.files) {
+                                  handlePhotoFilesSelected(e.dataTransfer.files);
+                                }
+                              }}
+                              onClick={() => {
+                                const fileInput = document.getElementById("gallery-photo-file-input");
+                                if (fileInput) fileInput.click();
+                              }}
+                              className="border-2 border-dashed border-white/15 hover:border-[#d93838]/50 bg-stone-900/60 p-5 rounded text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-2"
+                            >
+                              <input
+                                id="gallery-photo-file-input"
+                                type="file"
+                                accept="image/*"
+                                multiple
+                                disabled={isUploadingPhoto}
+                                onChange={(e) => {
+                                  if (e.target.files) {
+                                    handlePhotoFilesSelected(e.target.files);
+                                    e.target.value = "";
+                                  }
+                                }}
+                                className="hidden"
+                              />
+                              <div className="w-10 h-10 rounded-full bg-stone-800 text-[#d93838] flex items-center justify-center border border-white/10">
+                                <Camera size={20} />
+                              </div>
+                              <div className="space-y-0.5">
+                                <p className="text-white font-medium text-xs">Clique ou arraste e solte arquivos de imagem aqui</p>
+                                <p className="text-zinc-500 font-mono text-[10px]">Suporta múltiplos arquivos simultâneos. As fotos serão otimizadas e anexadas ao carrossel.</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Filtro de Fotos */}
+                          <div className="flex items-center justify-between gap-3 bg-stone-950 p-3 rounded border border-white/5 text-xs">
+                            <div className="flex items-center gap-2 text-zinc-400 font-mono text-[11px] w-full max-w-xs">
+                              <Search size={14} />
+                              <input
+                                type="text"
+                                value={photoFilter}
+                                onChange={(e) => setPhotoFilter(e.target.value)}
+                                placeholder="Filtrar fotos por legenda..."
+                                className="bg-transparent text-white border-none focus:outline-none w-full"
+                              />
+                            </div>
+                            <span className="text-[10px] font-mono text-zinc-500 whitespace-nowrap">
+                              Exibindo {spacePhotos.filter(p => !photoFilter || p.caption.toLowerCase().includes(photoFilter.toLowerCase())).length} de {spacePhotos.length} fotos
+                            </span>
+                          </div>
+
+                          {/* Lista Grid de Fotos do Carrossel */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[600px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-stone-950">
+                            {spacePhotos
+                              .map((photo, origIdx) => ({ photo, origIdx }))
+                              .filter(({ photo }) => !photoFilter || photo.caption.toLowerCase().includes(photoFilter.toLowerCase()))
+                              .map(({ photo, origIdx }) => (
+                                <div key={origIdx} className="bg-stone-950 p-3.5 rounded border border-white/10 flex gap-3 text-xs items-start group hover:border-[#d93838]/40 transition-all">
+                                  {/* Thumbnail Preview */}
+                                  <div className="w-24 h-20 bg-stone-900 rounded overflow-hidden shrink-0 border border-white/10 relative">
+                                    <img
+                                      src={photo.url}
+                                      alt={photo.caption}
+                                      className="w-full h-full object-cover"
+                                      onError={(e) => {
+                                        (e.target as HTMLElement).style.display = 'none';
+                                      }}
+                                    />
+                                    <span className="absolute top-1 left-1 bg-black/80 text-[8px] font-mono px-1.5 py-0.5 rounded text-white border border-white/10">
+                                      #{origIdx + 1}
+                                    </span>
+                                  </div>
+
+                                  {/* Inputs & Controls */}
+                                  <div className="flex-grow space-y-2">
+                                    <input
+                                      type="text"
+                                      value={photo.caption}
+                                      onChange={(e) => {
+                                        const updated = [...spacePhotos];
+                                        updated[origIdx].caption = e.target.value;
+                                        setSpacePhotos(updated);
+                                      }}
+                                      placeholder="Legenda da Foto..."
+                                      className="w-full bg-stone-900 border border-white/10 p-1.5 rounded text-white font-medium text-xs focus:border-[#d93838] focus:outline-none"
+                                    />
+
+                                    <div className="flex items-center justify-between gap-2 pt-1">
+                                      <label className="cursor-pointer bg-stone-900 hover:bg-stone-800 border border-white/10 text-zinc-300 px-2.5 py-1 rounded text-[10px] font-mono flex items-center gap-1 transition-all">
+                                        <Upload size={12} className="text-[#d93838]" />
+                                        <span>Substituir Foto</span>
+                                        <input
+                                          type="file"
+                                          accept="image/*"
+                                          className="hidden"
+                                          onChange={async (e) => {
+                                            if (e.target.files && e.target.files[0]) {
+                                              const dataUrl = await compressImageFile(e.target.files[0]);
+                                              const updated = [...spacePhotos];
+                                              updated[origIdx].url = dataUrl;
+                                              setSpacePhotos(updated);
+                                              e.target.value = "";
+                                            }
+                                          }}
+                                        />
+                                      </label>
+
+                                      <div className="flex items-center gap-1">
+                                        <button
+                                          type="button"
+                                          disabled={origIdx === 0}
+                                          onClick={() => handleMovePhoto(origIdx, 'up')}
+                                          className="p-1 text-zinc-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer font-mono text-[10px] bg-stone-900 rounded border border-white/5"
+                                          title="Mover para cima/anterior"
+                                        >
+                                          ▲ Mover
+                                        </button>
+                                        <button
+                                          type="button"
+                                          disabled={origIdx === spacePhotos.length - 1}
+                                          onClick={() => handleMovePhoto(origIdx, 'down')}
+                                          className="p-1 text-zinc-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer font-mono text-[10px] bg-stone-900 rounded border border-white/5"
+                                          title="Mover para baixo/próxima"
+                                        >
+                                          ▼ Mover
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleRemovePhotoFromGallery(origIdx)}
+                                          className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded transition-all cursor-pointer ml-1"
+                                          title="Remover foto do carrossel"
+                                        >
+                                          <Trash2 size={14} />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                          </div>
+
+                          <div className="pt-2 flex justify-end">
+                            <button
+                              type="button"
+                              onClick={handleSaveSpaceGallery}
+                              className="bg-[#d93838] hover:bg-red-700 text-white font-mono text-xs uppercase font-bold px-6 py-3 rounded transition-all cursor-pointer flex items-center gap-2 shadow-lg shadow-[#d93838]/20"
+                            >
+                              <Check size={16} /> Salvar Alterações no Carrossel
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* BLOCO 2: INFORMAÇÕES E TEXTOS DO ESTÚDIO */}
+                        <div className="bg-stone-900 border border-white/10 p-6 rounded space-y-6">
+                          <div>
+                            <h6 className="font-display font-bold text-xs uppercase tracking-widest text-white flex items-center gap-2 border-b border-white/10 pb-3">
+                              <FileText size={16} className="text-[#d93838]" /> Textos, Especificações & Tabela de Preços
+                            </h6>
+                            <p className="text-zinc-400 text-xs mt-2">
+                              Altere os nomes, descrições do estúdio, capacidade, tarifas e links de download do manual.
+                            </p>
+                          </div>
+
+                          {spaceSaveMsg && (
+                            <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 p-3 rounded text-xs font-mono flex items-center gap-2">
+                              <CheckCircle2 size={16} /> {spaceSaveMsg}
+                            </div>
+                          )}
+
+                          <form onSubmit={handleSaveSpaceSettings} className="space-y-4 text-xs">
+                            
+                            {/* Nomes e Subtítulos */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div className="space-y-1">
+                                <label className="font-mono text-[10px] uppercase text-zinc-400 block font-bold">
+                                  Nome Principal do Estúdio
+                                </label>
+                                <input
+                                  type="text"
+                                  required
+                                  value={spaceSettings.name}
+                                  onChange={(e) => setSpaceSettings({ ...spaceSettings, name: e.target.value })}
+                                  placeholder="ex: Triângulo Estúdio"
+                                  className="w-full bg-stone-950 border border-white/10 p-2.5 rounded text-white"
+                                />
+                              </div>
+
+                              <div className="space-y-1">
+                                <label className="font-mono text-[10px] uppercase text-zinc-400 block font-bold">
+                                  Subtítulo do Card do Estúdio
+                                </label>
+                                <input
+                                  type="text"
+                                  value={spaceSettings.subtitle}
+                                  onChange={(e) => setSpaceSettings({ ...spaceSettings, subtitle: e.target.value })}
+                                  placeholder="ex: O infinito branco e iluminação profissional"
+                                  className="w-full bg-stone-950 border border-white/10 p-2.5 rounded text-white"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Badge e Descrição do Cabeçalho */}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                              <div className="space-y-1">
+                                <label className="font-mono text-[10px] uppercase text-zinc-400 block font-bold">
+                                  Selo/Badge Superior
+                                </label>
+                                <input
+                                  type="text"
+                                  value={spaceSettings.headerBadge}
+                                  onChange={(e) => setSpaceSettings({ ...spaceSettings, headerBadge: e.target.value })}
+                                  placeholder="ex: Nosso Espaço"
+                                  className="w-full bg-stone-950 border border-white/10 p-2.5 rounded text-white"
+                                />
+                              </div>
+
+                              <div className="md:col-span-2 space-y-1">
+                                <label className="font-mono text-[10px] uppercase text-zinc-400 block font-bold">
+                                  Texto de Apresentação Superior
+                                </label>
+                                <input
+                                  type="text"
+                                  value={spaceSettings.headerDesc}
+                                  onChange={(e) => setSpaceSettings({ ...spaceSettings, headerDesc: e.target.value })}
+                                  placeholder="ex: Um estúdio completo, flexível e totalmente equipado..."
+                                  className="w-full bg-stone-950 border border-white/10 p-2.5 rounded text-white"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Descrição Detalhada */}
+                            <div className="space-y-1">
+                              <label className="font-mono text-[10px] uppercase text-zinc-400 block font-bold">
+                                Descrição Detalhada da Infraestrutura
+                              </label>
+                              <textarea
+                                rows={4}
+                                value={spaceSettings.description}
+                                onChange={(e) => setSpaceSettings({ ...spaceSettings, description: e.target.value })}
+                                placeholder="Descreva os detalhes do ciclorama, pé direito, trilhos de iluminação..."
+                                className="w-full bg-stone-950 border border-white/10 p-2.5 rounded text-white leading-relaxed"
+                              />
+                            </div>
+
+                            {/* Capacidade, Área e Preços */}
+                            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 pt-2">
+                              <div className="space-y-1">
+                                <label className="font-mono text-[9px] uppercase text-zinc-400 block">
+                                  Capacidade (Pessoas)
+                                </label>
+                                <input
+                                  type="number"
+                                  value={spaceSettings.capacity}
+                                  onChange={(e) => setSpaceSettings({ ...spaceSettings, capacity: Number(e.target.value) })}
+                                  className="w-full bg-stone-950 border border-white/10 p-2 rounded text-white font-mono"
+                                />
+                              </div>
+
+                              <div className="space-y-1">
+                                <label className="font-mono text-[9px] uppercase text-zinc-400 block">
+                                  Área Útil
+                                </label>
+                                <input
+                                  type="text"
+                                  value={spaceSettings.area}
+                                  onChange={(e) => setSpaceSettings({ ...spaceSettings, area: e.target.value })}
+                                  className="w-full bg-stone-950 border border-white/10 p-2 rounded text-white font-mono"
+                                />
+                              </div>
+
+                              <div className="space-y-1">
+                                <label className="font-mono text-[9px] uppercase text-zinc-400 block">
+                                  Valor/Hora (R$)
+                                </label>
+                                <input
+                                  type="number"
+                                  value={spaceSettings.hourlyRate}
+                                  onChange={(e) => setSpaceSettings({ ...spaceSettings, hourlyRate: Number(e.target.value) })}
+                                  className="w-full bg-stone-950 border border-white/10 p-2 rounded text-white font-mono text-emerald-400 font-bold"
+                                />
+                              </div>
+
+                              <div className="space-y-1">
+                                <label className="font-mono text-[9px] uppercase text-zinc-400 block">
+                                  Turno 4h (R$)
+                                </label>
+                                <input
+                                  type="number"
+                                  value={spaceSettings.halfDayRate}
+                                  onChange={(e) => setSpaceSettings({ ...spaceSettings, halfDayRate: Number(e.target.value) })}
+                                  className="w-full bg-stone-950 border border-white/10 p-2 rounded text-white font-mono"
+                                />
+                              </div>
+
+                              <div className="space-y-1">
+                                <label className="font-mono text-[9px] uppercase text-zinc-400 block">
+                                  Diária 8h (R$)
+                                </label>
+                                <input
+                                  type="number"
+                                  value={spaceSettings.fullDayRate}
+                                  onChange={(e) => setSpaceSettings({ ...spaceSettings, fullDayRate: Number(e.target.value) })}
+                                  className="w-full bg-stone-950 border border-white/10 p-2 rounded text-white font-mono"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Lista Dinâmica de Diferenciais Inclusos */}
+                            <div className="space-y-2 pt-2 border-t border-white/10">
+                              <label className="font-mono text-[10px] uppercase text-zinc-400 block font-bold">
+                                Diferenciais & Itens Inclusos na Locação:
+                              </label>
+
+                              <div className="flex flex-wrap gap-2 mb-2">
+                                {spaceSettings.features.map((feat, fIdx) => (
+                                  <span key={fIdx} className="bg-stone-950 border border-white/10 text-zinc-200 px-3 py-1 rounded text-xs flex items-center gap-2">
+                                    <CheckCircle2 size={12} className="text-[#d93838]" />
+                                    {feat}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveFeatureTag(fIdx)}
+                                      className="text-red-400 hover:text-white cursor-pointer ml-1"
+                                      title="Remover item"
+                                    >
+                                      ×
+                                    </button>
+                                  </span>
+                                ))}
+                              </div>
+
+                              <div className="flex gap-2">
+                                <input
+                                  type="text"
+                                  value={newFeatureText}
+                                  onChange={(e) => setNewFeatureText(e.target.value)}
+                                  placeholder="Digite um novo diferencial (ex: Camarim exclusivo, Ar Condicionado...)"
+                                  className="flex-grow bg-stone-950 border border-white/10 p-2 rounded text-white text-xs"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={handleAddFeatureTag}
+                                  className="bg-stone-800 hover:bg-stone-700 text-white font-mono text-xs px-4 py-2 rounded cursor-pointer"
+                                >
+                                  + Adicionar Diferencial
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Bloco Manual PDF */}
+                            <div className="p-4 bg-stone-950 border border-white/10 rounded space-y-3">
+                              <span className="font-mono text-[10px] text-[#d93838] uppercase font-bold block">
+                                Bloco do Manual de Instruções (PDF)
+                              </span>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div>
+                                  <label className="font-mono text-[9px] uppercase text-zinc-400 block">Título do Bloco</label>
+                                  <input
+                                    type="text"
+                                    value={spaceSettings.manualTitle}
+                                    onChange={(e) => setSpaceSettings({ ...spaceSettings, manualTitle: e.target.value })}
+                                    className="w-full bg-stone-900 border border-white/10 p-2 rounded text-white text-xs"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="font-mono text-[9px] uppercase text-zinc-400 block">URL do Arquivo PDF</label>
+                                  <input
+                                    type="url"
+                                    value={spaceSettings.manualUrl}
+                                    onChange={(e) => setSpaceSettings({ ...spaceSettings, manualUrl: e.target.value })}
+                                    className="w-full bg-stone-900 border border-white/10 p-2 rounded text-white text-xs font-mono"
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <label className="font-mono text-[9px] uppercase text-zinc-400 block">Descrição do Manual</label>
+                                <input
+                                  type="text"
+                                  value={spaceSettings.manualDesc}
+                                  onChange={(e) => setSpaceSettings({ ...spaceSettings, manualDesc: e.target.value })}
+                                  className="w-full bg-stone-900 border border-white/10 p-2 rounded text-white text-xs"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Bloco Assistência Técnica */}
+                            <div className="p-4 bg-stone-950 border border-white/10 rounded space-y-3">
+                              <span className="font-mono text-[10px] text-[#d93838] uppercase font-bold block">
+                                Bloco de Assistência Técnica
+                              </span>
+                              <div className="space-y-2">
+                                <div>
+                                  <label className="font-mono text-[9px] uppercase text-zinc-400 block">Título</label>
+                                  <input
+                                    type="text"
+                                    value={spaceSettings.assistanceTitle}
+                                    onChange={(e) => setSpaceSettings({ ...spaceSettings, assistanceTitle: e.target.value })}
+                                    className="w-full bg-stone-900 border border-white/10 p-2 rounded text-white text-xs"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="font-mono text-[9px] uppercase text-zinc-400 block">Descrição</label>
+                                  <textarea
+                                    rows={2}
+                                    value={spaceSettings.assistanceDesc}
+                                    onChange={(e) => setSpaceSettings({ ...spaceSettings, assistanceDesc: e.target.value })}
+                                    className="w-full bg-stone-900 border border-white/10 p-2 rounded text-white text-xs"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+
+                            <button
+                              type="submit"
+                              className="w-full bg-[#d93838] hover:bg-red-700 text-white font-mono text-xs uppercase py-3.5 rounded font-bold transition-all cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-[#d93838]/20"
+                            >
+                              <Check size={16} /> Salvar Informações & Textos do Estúdio
+                            </button>
                           </form>
                         </div>
 
-                        {/* List of Spaces */}
-                        <div className="bg-stone-900 border border-white/10 p-4 rounded space-y-3">
-                          <h6 className="font-mono text-[10px] text-zinc-400 uppercase font-bold">Espaços Cadastrados:</h6>
-                          <div className="space-y-2">
-                            {spacesList.map((s) => (
-                              <div key={s.id} className="bg-stone-950 p-3 rounded border border-white/5 flex items-center justify-between text-xs">
-                                <div>
-                                  <strong className="text-white block">{s.name}</strong>
-                                  <span className="text-[10px] text-zinc-500 font-mono block">R$ {s.hourlyRate}/h • Turno: R$ {s.halfDayRate}</span>
-                                </div>
-                                <button onClick={() => handleDeleteSpace(s.id)} className="text-red-400 hover:text-red-300 p-1">
-                                  <Trash2 size={16} />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
                       </div>
                     )}
 
@@ -1703,12 +3726,14 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
                               <form onSubmit={async (e) => {
                                 e.preventDefault();
                                 if (!adminNewMsg.trim()) return;
+                                const cleanAdminMsg = sanitizeText(adminNewMsg, 2000);
+                                if (!cleanAdminMsg) return;
                                 await addDoc(collection(db, "messages"), cleanFirestoreData({
                                   id: "msg-" + Date.now(),
                                   senderId: "admin",
                                   senderName: "Atendimento Triângulo",
                                   recipientId: adminSelectedUserId,
-                                  text: adminNewMsg,
+                                  text: cleanAdminMsg,
                                   createdAt: new Date().toISOString()
                                 }));
                                 setAdminNewMsg("");
@@ -1740,7 +3765,36 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
                           </button>
                         </div>
 
-                        {backupMsg && <div className="text-xs font-mono text-emerald-400 bg-emerald-950/40 p-2.5 rounded border border-emerald-500/20">{backupMsg}</div>}
+                        {/* BACKUP FILES SNAPSHOTS */}
+                        <div className="bg-stone-900 border border-white/10 p-4 rounded space-y-3">
+                          <div className="flex justify-between items-center">
+                            <h6 className="font-mono text-[10px] text-zinc-400 uppercase font-bold flex items-center gap-1.5">
+                              <Download size={12} className="text-emerald-400" /> Snapshots de Backup no Servidor ({backupFiles.length})
+                            </h6>
+                            <button onClick={fetchBackupList} className="text-[10px] font-mono text-zinc-400 hover:text-white underline">Atualizar Lista</button>
+                          </div>
+                          {backupFiles.length === 0 ? (
+                            <p className="text-[11px] font-mono text-zinc-500 italic">Nenhum snapshot de backup gerado até o momento.</p>
+                          ) : (
+                            <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                              {backupFiles.map((f, i) => (
+                                <div key={f.filename || i} className="bg-stone-950 p-2 rounded border border-white/5 flex items-center justify-between text-xs font-mono">
+                                  <div>
+                                    <span className="text-zinc-200 font-bold block">{f.filename}</span>
+                                    <span className="text-[9px] text-zinc-500">{f.sizeKb} • {new Date(f.createdAt).toLocaleString("pt-BR")}</span>
+                                  </div>
+                                  <a
+                                    href={`/api/admin/download-backup/${encodeURIComponent(f.filename)}`}
+                                    download
+                                    className="bg-stone-800 hover:bg-stone-700 text-emerald-400 px-2.5 py-1 rounded text-[10px] font-bold flex items-center gap-1 transition-colors"
+                                  >
+                                    <Download size={11} /> Baixar
+                                  </a>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
 
                         <div className="flex bg-stone-900 p-1 rounded border border-white/5 text-[10px] font-mono uppercase">
                           {(["security", "activity", "behavior", "vitals"] as const).map((st) => (
@@ -1796,6 +3850,111 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
               )}
             </div>
           </motion.div>
+
+          {/* Rental Contract Modal with high z-index overlay */}
+          {isContractOpen && contractBooking && (
+            <RentalContractModal
+              isOpen={isContractOpen}
+              booking={contractBooking}
+              onClose={() => {
+                setIsContractOpen(false);
+                setContractBooking(null);
+              }}
+            />
+          )}
+
+          {/* InfinitePay Payment Modal for Tag @daluz_jef */}
+          {bookingToPay && (
+            <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-4">
+              <div className="bg-stone-900 border border-brand-red/40 rounded-lg max-w-lg w-full p-6 space-y-5 relative shadow-2xl animate-fade-in text-sans">
+                <button 
+                  onClick={() => setBookingToPay(null)} 
+                  className="absolute top-4 right-4 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X size={20} />
+                </button>
+
+                <div className="border-b border-white/10 pb-3">
+                  <span className="font-mono text-[10px] bg-brand-red/20 text-brand-red border border-brand-red/30 px-2.5 py-0.5 rounded font-bold uppercase tracking-wider inline-block mb-1.5">
+                    Pagamento de Sinal • Tag @daluz_jef
+                  </span>
+                  <h3 className="font-display font-bold text-lg text-white">
+                    Pagar Sinal da Reserva #{bookingToPay.id}
+                  </h3>
+                  <p className="text-zinc-400 text-xs mt-0.5 font-mono">
+                    {bookingToPay.spaceName} • {bookingToPay.date} ({bookingToPay.timeSlot})
+                  </p>
+                </div>
+
+                <div className="bg-stone-950 p-4 rounded border border-white/5 space-y-2.5 text-xs font-sans">
+                  <div className="flex justify-between items-center text-zinc-300 border-b border-white/5 pb-2">
+                    <span className="font-bold">Valor do Sinal de Garantia:</span>
+                    <strong className="text-emerald-400 text-base font-mono">R$ 100,00</strong>
+                  </div>
+                  <div className="flex justify-between items-center text-zinc-400 text-[11px]">
+                    <span>Cliente:</span>
+                    <span className="font-mono text-zinc-200">{bookingToPay.clientName}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-zinc-400 text-[11px]">
+                    <span>E-mail:</span>
+                    <span className="font-mono text-zinc-200">{bookingToPay.clientEmail}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-zinc-400 text-[11px]">
+                    <span>Estabelecimento InfinitePay:</span>
+                    <span className="font-mono text-amber-400 font-bold">@daluz_jef</span>
+                  </div>
+                </div>
+
+                <div className="space-y-2.5">
+                  <a
+                    href="https://checkout.infinitepay.io/daluz_jef/mHOzh5edeU"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full bg-brand-red hover:bg-red-700 text-white font-mono text-xs uppercase tracking-widest py-3.5 rounded font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg active:scale-95"
+                  >
+                    <CreditCard size={16} />
+                    Abrir Checkout PIX/Cartão (@daluz_jef)
+                  </a>
+
+                  <button
+                    onClick={async () => {
+                      try {
+                        await updateDoc(doc(db, "bookings", bookingToPay.id), {
+                          depositPaid: true,
+                          paymentMethod: "infinitepay",
+                          depositPaidAt: new Date().toISOString()
+                        });
+
+                        await fetch("/api/send-booking-email", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            ...bookingToPay,
+                            depositPaid: true,
+                            depositPaidAt: new Date().toISOString()
+                          })
+                        });
+
+                        alert("✅ Sinal confirmado com sucesso! E-mail de confirmação enviado.");
+                        setBookingToPay(null);
+                        if (onPaymentSuccess) onPaymentSuccess();
+                      } catch (err: any) {
+                        alert("Erro ao atualizar pagamento: " + err.message);
+                      }
+                    }}
+                    className="w-full bg-stone-800 hover:bg-stone-700 border border-emerald-500/30 text-emerald-300 font-mono text-xs uppercase tracking-widest py-3 rounded font-bold transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <CheckCircle2 size={16} />
+                    Confirmar Pagamento no Sistema
+                  </button>
+                </div>
+
+                <p className="text-[10px] text-zinc-500 font-mono text-center">
+                  Link oficial do estabelecimento InfinitePay @daluz_jef com notificação automática via Webhook (/api/infinitepay/webhook).
+                </p>
+              </div>
+            </div>
+          )}
         </>
       )}
     </AnimatePresence>

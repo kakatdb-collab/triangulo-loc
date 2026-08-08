@@ -1,13 +1,14 @@
 /**
- * Automated Firestore Logs & Audit Backup Script
+ * Automated Firestore Daily Export & Backup Script
  * Studio Triângulo Security Engine
  *
- * Exports security_logs, activity_logs, and behavior_logs into structured JSON snapshots.
- * Uses Firebase Admin SDK to bypass client security rules during server-side exports.
+ * Exports Firestore collections (including 'bookings' and 'users') into structured JSON snapshots.
+ * Uploads to Google Cloud Storage bucket when configured and saves local fallback snapshots.
  */
 
 import fs from "fs";
 import path from "path";
+import { Storage } from "@google-cloud/storage";
 import { initializeApp as initAdminApp, getApps } from "firebase-admin/app";
 import { getFirestore as getAdminFirestore } from "firebase-admin/firestore";
 import { initializeApp as initClientApp } from "firebase/app";
@@ -18,19 +19,22 @@ export interface BackupStructure {
   exportedAt: string;
   project: string;
   databaseId: string;
+  cloudStorageStatus?: string;
   counts: {
+    bookingsCount: number;
+    usersCount: number;
     securityLogsCount: number;
     activityLogsCount: number;
     behaviorLogsCount: number;
     vitalsLogsCount: number;
-    bookingsCount: number;
   };
   collections: {
+    bookings: any[];
+    users: any[];
     security_logs: any[];
     activity_logs: any[];
     behavior_logs: any[];
     vitals_logs: any[];
-    bookings: any[];
   };
 }
 
@@ -81,54 +85,87 @@ async function fetchCollectionData(colName: string, orderField?: string): Promis
   return items;
 }
 
+async function uploadToCloudStorage(filepath: string, filename: string): Promise<string> {
+  const bucketName = process.env.GCS_BUCKET_NAME || process.env.FIREBASE_STORAGE_BUCKET || `${firebaseConfig.projectId}.appspot.com`;
+  
+  try {
+    const storage = new Storage({ projectId: firebaseConfig.projectId });
+    const bucket = storage.bucket(bucketName);
+    const destination = `daily-backups/${filename}`;
+    
+    await bucket.upload(filepath, {
+      destination,
+      metadata: {
+        contentType: "application/json",
+        metadata: {
+          exportedAt: new Date().toISOString(),
+          project: firebaseConfig.projectId
+        }
+      }
+    });
+
+    console.log(`[CLOUD STORAGE SUCCESS] Uploaded ${filename} to gs://${bucketName}/${destination}`);
+    return `gs://${bucketName}/${destination}`;
+  } catch (err: any) {
+    console.warn(`[CLOUD STORAGE NOTICE] Local backup created. Cloud Storage upload skipped or unconfigured: ${err.message}`);
+    return `Armazenado localmente (GCS Status: ${err.message || "Pendente de credenciais GCS"})`;
+  }
+}
+
 export async function runLogsBackup(): Promise<{ filepath: string; backupData: BackupStructure }> {
-  console.log(`[BACKUP ENGINE] Initializing logs snapshot for database ${firebaseConfig.firestoreDatabaseId}...`);
+  console.log(`[BACKUP ENGINE] Initializing daily snapshot for database ${firebaseConfig.firestoreDatabaseId}...`);
 
   const timestamp = new Date();
   const dateStr = timestamp.toISOString().replace(/[:.]/g, "-");
 
-  const [securityLogs, activityLogs, behaviorLogs, vitalsLogs, bookings] = await Promise.all([
+  const [bookings, users, securityLogs, activityLogs, behaviorLogs, vitalsLogs] = await Promise.all([
+    fetchCollectionData("bookings", "createdAt"),
+    fetchCollectionData("users", "createdAt"),
     fetchCollectionData("security_logs", "timestamp"),
     fetchCollectionData("activity_logs", "timestamp"),
     fetchCollectionData("behavior_logs", "timestamp"),
     fetchCollectionData("vitals_logs", "timestamp"),
-    fetchCollectionData("bookings", "createdAt"),
   ]);
+
+  const filename = `firestore_backup_${dateStr}.json`;
+  const backupDir = path.join(process.cwd(), "backups");
+  if (!fs.existsSync(backupDir)) {
+    fs.mkdirSync(backupDir, { recursive: true });
+  }
+
+  const filepath = path.join(backupDir, filename);
 
   const backupData: BackupStructure = {
     exportedAt: timestamp.toISOString(),
     project: firebaseConfig.projectId,
     databaseId: firebaseConfig.firestoreDatabaseId || "default",
     counts: {
+      bookingsCount: bookings.length,
+      usersCount: users.length,
       securityLogsCount: securityLogs.length,
       activityLogsCount: activityLogs.length,
       behaviorLogsCount: behaviorLogs.length,
       vitalsLogsCount: vitalsLogs.length,
-      bookingsCount: bookings.length,
     },
     collections: {
+      bookings,
+      users,
       security_logs: securityLogs,
       activity_logs: activityLogs,
       behavior_logs: behaviorLogs,
       vitals_logs: vitalsLogs,
-      bookings: bookings,
     },
   };
 
-  const backupDir = path.join(process.cwd(), "backups");
-  if (!fs.existsSync(backupDir)) {
-    fs.mkdirSync(backupDir, { recursive: true });
-  }
+  const cloudStatus = await uploadToCloudStorage(filepath, filename);
+  backupData.cloudStorageStatus = cloudStatus;
 
-  const filename = `logs_backup_${dateStr}.json`;
-  const filepath = path.join(backupDir, filename);
   const latestPath = path.join(backupDir, "latest_logs_backup.json");
-
   fs.writeFileSync(filepath, JSON.stringify(backupData, null, 2), "utf8");
   fs.writeFileSync(latestPath, JSON.stringify(backupData, null, 2), "utf8");
 
-  console.log(`[BACKUP ENGINE SUCCESS] Logs exported to: ${filepath}`);
-  console.log(`[SUMMARY] Security: ${securityLogs.length} | Activity: ${activityLogs.length} | Behavior: ${behaviorLogs.length} | Bookings: ${bookings.length}`);
+  console.log(`[BACKUP ENGINE SUCCESS] Daily backup exported to: ${filepath}`);
+  console.log(`[SUMMARY] Bookings: ${bookings.length} | Users: ${users.length} | Security: ${securityLogs.length} | Activity: ${activityLogs.length}`);
 
   return { filepath, backupData };
 }
@@ -142,3 +179,4 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     process.exit(0); // Exit gracefully so build doesn't break if server ADC isn't configured
   });
 }
+

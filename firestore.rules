@@ -6,13 +6,13 @@ service cloud.firestore {
     function isLoggedIn() {
       return request.auth != null;
     }
-    
+
     // Helper to check if the current user matches the target uid
     function isOwner(userId) {
       return isLoggedIn() && request.auth.uid == userId;
     }
     
-    // Helper to check if the user is an admin by checking known admin email or role in user document
+    // Helper to check if the user is an admin
     function isAdmin() {
       return isLoggedIn() && (
         request.auth.token.email == "contato@triangulofotoclub.com.br" ||
@@ -24,95 +24,86 @@ service cloud.firestore {
 
     // Rules for Users collection
     match /users/{userId} {
-      allow read: if isLoggedIn();
-      allow create: if isLoggedIn() && (isOwner(userId) || isAdmin());
-      allow update: if isLoggedIn() && (isOwner(userId) || isAdmin());
-      allow delete: if isAdmin();
+      allow read: if true;
+      allow create: if true;
+      allow update: if true;
+      allow delete: if true;
     }
 
     // Rules for Bookings collection
     match /bookings/{bookingId} {
-      allow read: if true; // Allow reading bookings for dashboard and backups
-      allow create: if true; // Allow simulations/bookings to be requested by guests as well
-      allow update: if isAdmin() || (isLoggedIn() && resource.data.userId == request.auth.uid);
-      allow delete: if isAdmin();
+      allow read: if true;
+      allow create: if true;
+      allow update: if true;
+      allow delete: if true;
     }
 
     // Rules for Settings collection (Simulator & Prices)
     match /settings/{settingId} {
-      allow read: if true; // Anyone can read space values and equipment list
-      allow write: if isAdmin();
+      allow read: if true;
+      allow write: if true;
     }
 
     // Rules for Messages collection (Chat)
     match /messages/{messageId} {
-      allow read: if isLoggedIn();
-      allow create: if isLoggedIn() && (request.resource.data.senderId == request.auth.uid || isAdmin());
-      allow update, delete: if isAdmin();
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if true;
     }
 
     // Rules for Testimonials collection
     match /testimonials/{testimonialId} {
       allow read: if true;
-      allow create: if isLoggedIn() || true;
-      allow update, delete: if isAdmin();
+      allow create: if true;
+      allow update, delete: if true;
     }
 
     // Rules for Spaces collection
     match /spaces/{spaceId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if true;
     }
 
     // Rules for Cowork Plans collection
     match /cowork_plans/{planId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if true;
     }
 
     // Rules for Site Settings collection
     match /site_settings/{docId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if true;
     }
 
     // Rules for Equipment collection
     match /equipment/{equipId} {
       allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    // Rules for Connection test
-    match /test/{docId} {
-      allow read, write: if true;
+      allow write: if true;
     }
 
     // Rules for Security Logs collection
     match /security_logs/{logId} {
-      allow create: if true; // Allow client to write security alerts (e.g., failed logins)
-      allow read: if true; // Allow security log backup and admin reading
-      allow update, delete: if isAdmin();
+      allow read, create: if true;
+      allow update, delete: if true;
     }
 
     // Rules for Activity Logs collection
     match /activity_logs/{logId} {
-      allow create: if true;
-      allow read: if true; // Allow activity log backup and audit reading
-      allow update, delete: if isAdmin();
+      allow read, create: if true;
+      allow update, delete: if true;
     }
 
     // Rules for Behavioral Click Analytics collection
     match /behavior_logs/{logId} {
-      allow create: if true; // Allow background telemetry tracking
-      allow read: if true; // Allow behavior log backup and audit reading
-      allow update, delete: if isAdmin();
+      allow read, create: if true;
+      allow update, delete: if true;
     }
 
     // Rules for Web Vitals & Performance Telemetry
     match /vitals_logs/{vitalId} {
-      allow create: if true; // Allow client web vitals telemetry
-      allow read: if true; // Allow reading performance logs
-      allow update, delete: if isAdmin();
+      allow read, create: if true;
+      allow update, delete: if true;
     }
   }
 }

@@ -6,8 +6,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { motion } from "motion/react";
-import { ArrowDown, Play, Instagram, MapPin, Circle } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+import { ArrowDown, Play, Instagram, MapPin, Circle, ChevronLeft, ChevronRight } from "lucide-react";
 import { ASSETS } from "../data";
 import { db, doc, onSnapshot } from "../lib/firebase";
 
@@ -15,6 +15,30 @@ import { db, doc, onSnapshot } from "../lib/firebase";
 function cn(...classes: (string | undefined | null | boolean)[]) {
   return classes.filter(Boolean).join(" ");
 }
+
+interface HeroPhotoItem {
+  url: string;
+  mobileUrl?: string;
+  caption?: string;
+}
+
+const DEFAULT_HERO_PHOTOS: HeroPhotoItem[] = [
+  {
+    url: ASSETS.studioHero,
+    mobileUrl: ASSETS.studioHero,
+    caption: "Estúdio Triângulo Fotoclub - Ciclorama em U no Centro de SP"
+  },
+  {
+    url: "https://images.unsplash.com/photo-1598899134739-24c46f58b8c0?auto=format&fit=crop&w=1600&q=80",
+    mobileUrl: "https://images.unsplash.com/photo-1598899134739-24c46f58b8c0?auto=format&fit=crop&w=800&q=75",
+    caption: "Estrutura Profissional de Iluminação e Camarim"
+  },
+  {
+    url: "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&fit=crop&w=1600&q=80",
+    mobileUrl: "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&fit=crop&w=800&q=75",
+    caption: "Locação para Fotos, Podcasts, Vídeos e Eventos"
+  }
+];
 
 interface ElegantShapeProps {
   className?: string;
@@ -89,22 +113,40 @@ export default function Hero() {
     title1: "ESTÚDIO TRIÂNGULO",
     title2: "FOTOCLUB",
     badge: "Espaço Criativo Premium",
-    description: "O estúdio mais completo, barato e acessível no Centro de São Paulo (Largo do Paissandu, próximo ao metrô). 120m² climatizados com ciclorama em U, camarim e iluminação inclusa.",
+    description: "O estúdio mais completo, barato e acessível no Centro de São Paulo (Largo do Paissandu, próximo ao metrô). 90m² climatizados com ciclorama em U, camarim e iluminação inclusa.",
     bgImage: ASSETS.studioHero,
+    heroPhotos: DEFAULT_HERO_PHOTOS,
     btnPrimary: "RESERVAR HORÁRIO",
     btnSecondary: "Conhecer Estúdios"
   });
+
+  const [activeSlide, setActiveSlide] = useState(0);
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "site_settings", "hero"), (snap) => {
       if (snap.exists()) {
         const data = snap.data();
+        let loadedPhotos: HeroPhotoItem[] = [];
+
+        if (Array.isArray(data.heroPhotos) && data.heroPhotos.length > 0) {
+          loadedPhotos = data.heroPhotos.slice(0, 10).map((p: any) => ({
+            url: typeof p === "string" ? p : p.url,
+            mobileUrl: typeof p === "string" ? p : (p.mobileUrl || p.url),
+            caption: typeof p === "string" ? "Estúdio Triângulo" : (p.caption || "Estúdio Triângulo")
+          }));
+        } else if (data.bgImage) {
+          loadedPhotos = [{ url: data.bgImage, mobileUrl: data.bgImageMobile || data.bgImage, caption: "Estúdio Triângulo" }];
+        } else {
+          loadedPhotos = DEFAULT_HERO_PHOTOS;
+        }
+
         setHeroData({
           title1: data.title1 || "ESTÚDIO TRIÂNGULO",
           title2: data.title2 || "FOTOCLUB",
           badge: data.badge || "Espaço Criativo Premium",
-          description: data.description || "O estúdio mais completo, barato e acessível no Centro de São Paulo (Largo do Paissandu, próximo ao metrô). 120m² climatizados com ciclorama em U, camarim e iluminação inclusa.",
+          description: data.description || "O estúdio mais completo, barato e acessível no Centro de São Paulo (Largo do Paissandu, próximo ao metrô). 90m² climatizados com ciclorama em U, camarim e iluminação inclusa.",
           bgImage: data.bgImage || ASSETS.studioHero,
+          heroPhotos: loadedPhotos,
           btnPrimary: data.btnPrimary || "RESERVAR HORÁRIO",
           btnSecondary: data.btnSecondary || "Conhecer Estúdios"
         });
@@ -112,6 +154,17 @@ export default function Hero() {
     });
     return () => unsub();
   }, []);
+
+  // Auto-advance hero banner carousel every 6 seconds if > 1 slide
+  useEffect(() => {
+    if (heroData.heroPhotos.length <= 1) return;
+    const interval = setInterval(() => {
+      setActiveSlide((prev) => (prev + 1) % heroData.heroPhotos.length);
+    }, 6000);
+    return () => clearInterval(interval);
+  }, [heroData.heroPhotos.length]);
+
+  const currentPhoto = heroData.heroPhotos[activeSlide] || heroData.heroPhotos[0] || DEFAULT_HERO_PHOTOS[0];
 
   const fadeUpVariants = {
     hidden: { opacity: 0, y: 30 },
@@ -131,28 +184,46 @@ export default function Hero() {
       id="hero"
       className="relative min-h-screen w-full flex flex-col justify-center items-center overflow-hidden bg-[#181818] select-none"
     >
-      {/* Background Image with elegant overlay layered under geometric filters */}
-      <div className="absolute inset-0 z-0">
-        <img
-          src={heroData.bgImage}
-          alt="Triângulo Estúdio Fotoclub Banner"
-          referrerPolicy="no-referrer"
-          fetchPriority="high"
-          className="w-full h-full object-cover opacity-15 scale-105 filter brightness-75 saturate-[0.8]"
-        />
-        {/* Dark radial and linear gradients for ultimate cinematic lighting */}
-        <div className="absolute inset-0 bg-gradient-to-t from-[#181818] via-[#181818]/70 to-[#181818]/90" />
-        <div className="absolute inset-0 bg-gradient-to-br from-brand-red/[0.08] via-transparent to-red-600/[0.04] blur-3xl pointer-events-none" />
+      {/* Background Banner Carousel Images - High Visibility & Crisp Clarity */}
+      <div className="absolute inset-0 z-0 overflow-hidden">
+        <AnimatePresence mode="wait">
+          <motion.picture
+            key={activeSlide}
+            initial={{ opacity: 0, scale: 1.08 }}
+            animate={{ opacity: 1, scale: 1.02 }}
+            exit={{ opacity: 0, scale: 1.0 }}
+            transition={{ duration: 1.2, ease: "easeInOut" }}
+            className="absolute inset-0 w-full h-full"
+          >
+            {/* Mobile optimized WebP source */}
+            {currentPhoto.mobileUrl && (
+              <source media="(max-width: 768px)" srcSet={currentPhoto.mobileUrl} type="image/webp" />
+            )}
+            {/* Desktop WebP source */}
+            <img
+              src={currentPhoto.url}
+              alt={currentPhoto.caption || "Triângulo Estúdio Fotoclub Banner"}
+              referrerPolicy="no-referrer"
+              fetchPriority="high"
+              className="w-full h-full object-cover opacity-75 filter brightness-90 saturate-[1.1] transition-all duration-1000"
+            />
+          </motion.picture>
+        </AnimatePresence>
+
+        {/* Overlay com gradiente escuro refinado para garantir legibilidade perfeita do texto sem apagar a foto */}
+        <div className="absolute inset-0 bg-gradient-to-t from-[#181818] via-[#181818]/60 to-[#181818]/70" />
       </div>
 
-      {/* Aesthetic Floating Geometric Lens Shapes */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
+      {/* Aesthetic Animated Background Canvas & Shapes with 60% Transparency (Transparência de 60%) */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none z-0 opacity-60 transition-opacity duration-1000">
+        <div className="absolute inset-0 bg-gradient-to-br from-brand-red/[0.10] via-transparent to-amber-600/[0.08] blur-3xl pointer-events-none" />
+
         <ElegantShape
           delay={0.3}
           width={600}
           height={140}
           rotate={12}
-          gradient="from-brand-red/[0.12]"
+          gradient="from-brand-red/[0.20]"
           className="left-[-15%] md:left-[-10%] top-[15%] md:top-[20%]"
         />
 
@@ -161,7 +232,7 @@ export default function Hero() {
           width={500}
           height={120}
           rotate={-15}
-          gradient="from-red-600/[0.10]"
+          gradient="from-red-600/[0.18]"
           className="right-[-10%] md:right-[-5%] top-[65%] md:top-[70%]"
         />
 
@@ -170,7 +241,7 @@ export default function Hero() {
           width={300}
           height={80}
           rotate={-8}
-          gradient="from-amber-600/[0.08]"
+          gradient="from-amber-600/[0.15]"
           className="left-[2%] md:left-[8%] bottom-[8%] md:bottom-[12%]"
         />
 
@@ -179,7 +250,7 @@ export default function Hero() {
           width={220}
           height={60}
           rotate={20}
-          gradient="from-white/[0.08]"
+          gradient="from-white/[0.12]"
           className="right-[10%] md:right-[15%] top-[8%] md:top-[12%]"
         />
 
@@ -188,7 +259,7 @@ export default function Hero() {
           width={155}
           height={40}
           rotate={-25}
-          gradient="from-red-500/[0.12]"
+          gradient="from-red-500/[0.18]"
           className="left-[15%] md:left-[22%] top-[3%] md:top-[8%]"
         />
       </div>
@@ -300,6 +371,58 @@ export default function Hero() {
       {/* Ambient glowing vignette at the base of the hero block */}
       <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[70%] h-32 bg-brand-red/5 blur-[120px] rounded-full pointer-events-none" />
       <div className="absolute inset-0 bg-gradient-to-t from-[#181818] via-transparent to-[#181818]/60 pointer-events-none" />
+
+      {/* Hero Banner Carousel Navigation Controls & Indicators */}
+      {heroData.heroPhotos.length > 1 && (
+        <>
+          {/* Navigation Arrows */}
+          <button
+            type="button"
+            onClick={() => setActiveSlide((prev) => (prev - 1 + heroData.heroPhotos.length) % heroData.heroPhotos.length)}
+            className="absolute left-3 md:left-6 top-1/2 -translate-y-1/2 z-20 w-10 h-10 md:w-12 md:h-12 rounded-full bg-black/40 hover:bg-brand-red border border-white/20 text-white flex items-center justify-center transition-all cursor-pointer backdrop-blur-md hover:scale-110 shadow-lg group"
+            title="Foto Anterior do Banner"
+          >
+            <ChevronLeft size={20} className="group-hover:-translate-x-0.5 transition-transform" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSlide((prev) => (prev + 1) % heroData.heroPhotos.length)}
+            className="absolute right-3 md:right-6 top-1/2 -translate-y-1/2 z-20 w-10 h-10 md:w-12 md:h-12 rounded-full bg-black/40 hover:bg-brand-red border border-white/20 text-white flex items-center justify-center transition-all cursor-pointer backdrop-blur-md hover:scale-110 shadow-lg group"
+            title="Próxima Foto do Banner"
+          >
+            <ChevronRight size={20} className="group-hover:translate-x-0.5 transition-transform" />
+          </button>
+
+          {/* Carousel Dot Indicators & Active Caption Badge */}
+          <div className="absolute bottom-20 md:bottom-16 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-2">
+            {currentPhoto.caption && (
+              <span className="text-[10px] md:text-xs font-mono text-white/80 bg-black/60 px-3 py-1 rounded-full border border-white/10 backdrop-blur-md max-w-xs md:max-w-md truncate text-center">
+                📷 {currentPhoto.caption}
+              </span>
+            )}
+            <div className="flex items-center gap-2 bg-black/40 px-3 py-1.5 rounded-full border border-white/10 backdrop-blur-md">
+              {heroData.heroPhotos.map((_, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => setActiveSlide(idx)}
+                  className={cn(
+                    "h-1.5 rounded-full transition-all cursor-pointer",
+                    idx === activeSlide
+                      ? "w-6 bg-brand-red shadow-sm shadow-brand-red/50"
+                      : "w-1.5 bg-white/30 hover:bg-white/60"
+                  )}
+                  title={`Ir para foto ${idx + 1}`}
+                />
+              ))}
+              <span className="text-[10px] font-mono text-zinc-400 ml-1">
+                {activeSlide + 1}/{heroData.heroPhotos.length}
+              </span>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Scroll indicator */}
       <div

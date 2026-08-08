@@ -3,21 +3,33 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Search, X, ChevronLeft, ChevronRight, Eye, Grid3X3 } from "lucide-react";
 import { PORTFOLIO_GALLERY } from "../data";
 import { PortfolioItem } from "../types";
+import { db, collection, onSnapshot } from "../lib/firebase";
 
 export default function Portfolio() {
+  const [items, setItems] = useState<PortfolioItem[]>(PORTFOLIO_GALLERY);
   const [activeFilter, setActiveFilter] = useState<string>("Todos");
   const [selectedItemIndex, setSelectedItemIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "portfolio_items"), (snap) => {
+      if (!snap.empty) {
+        const docs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as PortfolioItem));
+        setItems(docs);
+      }
+    });
+    return () => unsub();
+  }, []);
 
   const categories = ["Todos", "Moda", "Retrato", "Produto", "Comercial"];
 
   const filteredItems = activeFilter === "Todos"
-    ? PORTFOLIO_GALLERY
-    : PORTFOLIO_GALLERY.filter(item => item.category === activeFilter);
+    ? items
+    : items.filter(item => item.category === activeFilter);
 
   const handleNext = (e: React.MouseEvent) => {
     e.stopPropagation();
