@@ -171,7 +171,7 @@ export async function runLogsBackup(): Promise<{ filepath: string; backupData: B
 }
 
 // Allow CLI execution directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && process.argv[1].includes("export-logs-backup")) {
   runLogsBackup().then(() => {
     process.exit(0);
   }).catch((err) => {

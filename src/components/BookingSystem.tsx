@@ -88,8 +88,37 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
 
   // Calendar states
   const [selectedDate, setSelectedDate] = useState<string>("");
+  const [selectedStartTime, setSelectedStartTime] = useState<string>("09:00");
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<string>("");
-  const [durationHours, setDurationHours] = useState<number>(2); // Default 2 hours
+  const [durationHours, setDurationHours] = useState<number>(1); // Default 1 hour
+
+  // Calculate formatted slot range e.g. "09:00 às 13:00"
+  const calculateSlotRange = (startTime: string, hours: number) => {
+    if (!startTime) return "";
+    const [hStr, mStr] = startTime.split(":");
+    if (hStr === undefined) return startTime;
+    const startH = parseInt(hStr, 10);
+    const startM = parseInt(mStr || "0", 10);
+    if (isNaN(startH)) return startTime;
+
+    const totalStartMin = startH * 60 + (isNaN(startM) ? 0 : startM);
+    const totalEndMin = (totalStartMin + hours * 60) % (24 * 60);
+
+    const endH = Math.floor(totalEndMin / 60);
+    const endM = totalEndMin % 60;
+
+    const pad = (n: number) => n.toString().padStart(2, "0");
+    const formattedStart = `${pad(startH)}:${pad(startM)}`;
+    const formattedEnd = `${pad(endH)}:${pad(endM)}`;
+
+    return `${formattedStart} às ${formattedEnd}`;
+  };
+
+  useEffect(() => {
+    if (selectedStartTime) {
+      setSelectedTimeSlot(calculateSlotRange(selectedStartTime, durationHours));
+    }
+  }, [selectedStartTime, durationHours]);
   
   // Equipment states
   const [selectedEquipIds, setSelectedEquipIds] = useState<string[]>([]);
@@ -550,18 +579,26 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
     }
   };
 
-  // Available schedules
-  const timeSlots = [
-    "08:00 - 10:00",
-    "10:30 - 12:30",
-    "13:00 - 15:00",
-    "15:30 - 17:30",
-    "18:00 - 20:00",
-    "20:30 - 22:30"
+  // Available start time shortcut chips
+  const quickStartTimes = [
+    "08:00",
+    "09:00",
+    "10:00",
+    "11:00",
+    "12:00",
+    "13:00",
+    "14:00",
+    "15:00",
+    "16:00",
+    "17:00",
+    "18:00",
+    "19:00",
+    "20:00"
   ];
 
   // Duration shortcuts
   const durationPresets = [
+    { label: "1 hora", value: 1 },
     { label: "2 horas", value: 2 },
     { label: "4h (Meio Período)", value: 4 },
     { label: "8h (Integral)", value: 8 },
@@ -1075,11 +1112,11 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
               <div className="bg-stone-950 p-4 border border-white/5 rounded-sm mb-4">
                 <div className="flex justify-between items-center mb-2">
                   <span className="font-mono text-xs text-zinc-400 font-medium">Quantidade de Horas:</span>
-                  <span className="text-lg font-mono font-bold text-brand-red">{durationHours} horas</span>
+                  <span className="text-lg font-mono font-bold text-brand-red">{durationHours} {durationHours === 1 ? "hora" : "horas"}</span>
                 </div>
                 <input
                   type="range"
-                  min="2"
+                  min="1"
                   max="12"
                   step="1"
                   value={durationHours}
@@ -1087,7 +1124,7 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
                   className="w-full accent-brand-red bg-stone-900 cursor-pointer h-1 rounded"
                 />
                 <div className="flex justify-between text-[9px] font-mono text-zinc-500 mt-1">
-                  <span>Mínimo 2 horas</span>
+                  <span>Mínimo 1 hora</span>
                   <span>Meio Período (4h)</span>
                   <span>Período Integral (8h)</span>
                   <span>Máximo 12 horas</span>
@@ -1165,7 +1202,7 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
               <div className="flex items-center gap-2 mb-4">
                 <span className="font-mono text-xs text-brand-red font-bold px-2 py-0.5 bg-brand-red/10 border border-brand-red/20 rounded">04</span>
                 <label className="font-display font-medium text-lg uppercase tracking-wider text-stone-200">
-                  Data e Faixa Disponíveis
+                  Data e Horário de Preferência
                 </label>
               </div>
 
@@ -1182,35 +1219,72 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
                       min={new Date().toISOString().split("T")[0]}
                       value={selectedDate}
                       onChange={(e) => setSelectedDate(e.target.value)}
-                      className="w-full bg-stone-900 border border-white/10 rounded px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-brand-red"
+                      className="w-full bg-stone-900 border border-white/10 rounded px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-brand-red cursor-pointer"
                     />
                   </div>
                 </div>
 
-                {/* Slots selectors (sm:col-span-2) */}
-                <div className="sm:col-span-2 bg-stone-950 p-4 border border-white/5 rounded-sm">
-                  <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest block mb-2">
-                    Faixa de Início Disponíveis
-                  </span>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {timeSlots.map((slot) => {
-                      const isActive = selectedTimeSlot === slot;
+                {/* Free Custom Start Time Selection (sm:col-span-2) */}
+                <div className="sm:col-span-2 bg-stone-950 p-4 border border-white/5 rounded-sm space-y-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest block">
+                      Horário de Início Preferencial
+                    </span>
+                    <span className="text-[10px] font-mono text-brand-red bg-brand-red/10 px-2 py-0.5 rounded border border-brand-red/20 font-bold">
+                      {selectedTimeSlot ? `Período: ${selectedTimeSlot}` : "Selecione o Horário"}
+                    </span>
+                  </div>
+
+                  {/* Time picker input & label */}
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <div className="flex items-center gap-2 bg-stone-900 border border-white/15 px-3 py-2 rounded focus-within:border-brand-red">
+                      <Clock size={15} className="text-brand-red shrink-0" />
+                      <span className="text-[10px] font-mono text-zinc-400 uppercase">Digitar / Selecionar Horário:</span>
+                      <input
+                        type="time"
+                        value={selectedStartTime}
+                        onChange={(e) => setSelectedStartTime(e.target.value)}
+                        className="bg-transparent text-xs font-mono text-white font-bold focus:outline-none cursor-pointer"
+                      />
+                    </div>
+                    <span className="text-[10px] font-mono text-zinc-500">ou selecione um atalho rápido:</span>
+                  </div>
+
+                  {/* Quick Start Time Chips */}
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {quickStartTimes.map((time) => {
+                      const isActive = selectedStartTime === time;
                       return (
                         <button
                           type="button"
-                          key={slot}
-                          onClick={() => setSelectedTimeSlot(slot)}
-                          className={`py-2 px-1 text-center font-mono text-[10px] rounded border transition-colors cursor-pointer ${
+                          key={time}
+                          onClick={() => setSelectedStartTime(time)}
+                          className={`py-1.5 px-2.5 font-mono text-[11px] rounded border transition-all cursor-pointer ${
                             isActive
-                              ? "bg-brand-red border-brand-red text-white font-bold"
-                              : "bg-stone-900 border-white/5 text-zinc-400 hover:text-white hover:border-white/20"
+                              ? "bg-brand-red border-brand-red text-white font-bold shadow-sm shadow-brand-red/30"
+                              : "bg-stone-900 border-white/10 text-zinc-300 hover:text-white hover:border-white/30"
                           }`}
                         >
-                          {slot}
+                          {time}
                         </button>
                       );
                     })}
                   </div>
+                </div>
+              </div>
+
+              {/* WhatsApp Validation Warning Banner */}
+              <div className="mt-3.5 p-3.5 bg-stone-950/90 border border-amber-500/30 rounded-sm flex items-start gap-3">
+                <div className="w-7 h-7 rounded bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0 text-amber-400 mt-0.5">
+                  <MessageSquare size={15} />
+                </div>
+                <div className="text-xs">
+                  <span className="font-mono text-amber-300 font-bold uppercase block mb-0.5 text-[11px]">
+                    Validação do Horário via WhatsApp
+                  </span>
+                  <p className="text-stone-300 leading-relaxed font-sans text-[11px]">
+                    O horário de início selecionado é a sua <strong>opção de preferência</strong>. A validação e confirmação final do horário de entrada e da agenda serão realizadas diretamente com a nossa equipe no <strong>atendimento via WhatsApp</strong>.
+                  </p>
                 </div>
               </div>
             </div>
@@ -1560,6 +1634,14 @@ export default function BookingSystem({ selectedSpaceId, setSelectedSpaceId }: B
                     </>
                   )}
                 </button>
+
+                <div className="mt-4 p-3 bg-stone-950 border border-amber-500/30 rounded-sm flex items-start gap-2.5 text-[11px] text-amber-200">
+                  <MessageSquare className="text-amber-400 shrink-0 mt-0.5" size={15} />
+                  <p className="leading-relaxed font-sans text-[11px]">
+                    <strong className="text-amber-300 font-mono block mb-0.5 uppercase">Validação de Horário:</strong>
+                    O horário de início é sua preferência. A validação e confirmação final serão feitas via atendimento no <strong>WhatsApp</strong>.
+                  </p>
+                </div>
               </div>
 
             </div>
