@@ -11,6 +11,10 @@ import {
   sendPasswordResetEmail,
   signOut, 
   onAuthStateChanged,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInAnonymously,
+  updatePassword,
   User as FirebaseUser
 } from "firebase/auth";
 import { 
@@ -45,6 +49,14 @@ const app = initializeApp(firebaseConfig);
 
 // Initialize Firebase Auth
 export const auth = getAuth(app);
+
+// Initialize Google Auth Provider
+export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({
+  prompt: 'select_account'
+});
+
+export { signInWithPopup, signInAnonymously, updatePassword };
 
 // Initialize Firestore
 // Use the custom databaseId if specified in firebase-applet-config.json

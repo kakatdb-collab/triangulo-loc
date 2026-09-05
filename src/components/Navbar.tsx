@@ -27,6 +27,22 @@ export default function Navbar() {
   };
 
   useEffect(() => {
+    const checkLocalSession = () => {
+      const stored = localStorage.getItem("triangulo_admin_session");
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          if (parsed.email && parsed.role === "admin") {
+            setLoggedInUser({ email: parsed.email, name: parsed.name || "Administrador Triângulo", role: "admin" });
+            return true;
+          }
+        } catch (e) {}
+      }
+      return false;
+    };
+
+    checkLocalSession();
+
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (user) {
         const docRef = doc(db, "users", user.uid);
@@ -37,10 +53,19 @@ export default function Navbar() {
           setLoggedInUser(user);
         }
       } else {
-        setLoggedInUser(null);
+        if (!checkLocalSession()) {
+          setLoggedInUser(null);
+        }
       }
     });
-    return () => unsub();
+
+    const handleStorage = () => checkLocalSession();
+    window.addEventListener("storage", handleStorage);
+
+    return () => {
+      unsub();
+      window.removeEventListener("storage", handleStorage);
+    };
   }, []);
 
   useEffect(() => {

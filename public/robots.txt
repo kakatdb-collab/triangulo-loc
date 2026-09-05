@@ -2,5 +2,23 @@
 User-agent: *
 Allow: /
 
-# Sitemaps
+# Allow AI Search Engine Crawlers (ChatGPT Search, Perplexity, Gemini, Claude)
+User-agent: GPTBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+# Sitemap & LLMs discovery
 Sitemap: https://trianguloestudio.online/sitemap.xml
+# LLMs Text File for Generative AI Search Engines
+# https://trianguloestudio.online/llms.txt

@@ -1561,6 +1561,64 @@ const handleInfinitePayWebhook = async (req: express.Request, res: express.Respo
 app.post("/api/infinitepay/webhook", handleInfinitePayWebhook);
 app.post("/api/webhook-infinitepay", handleInfinitePayWebhook);
 
+// Static uploads directory for media assets
+const uploadsDir = path.join(process.cwd(), "public", "uploads");
+const photosDir = path.join(uploadsDir, "photos");
+if (!fs.existsSync(photosDir)) {
+  fs.mkdirSync(photosDir, { recursive: true });
+}
+app.use("/uploads", express.static(uploadsDir));
+
+// Dedicated admin image upload endpoint with compression & clean URL return
+app.post("/api/admin/upload-photo", async (req, res) => {
+  try {
+    const { imageBase64, filename } = req.body;
+    if (!imageBase64 || typeof imageBase64 !== "string") {
+      return res.status(400).json({ error: "Dado da imagem não fornecido ou inválido." });
+    }
+
+    const matches = imageBase64.match(/^data:image\/([a-zA-Z0-9+]+);base64,(.+)$/);
+    let ext = "webp";
+    let buffer: Buffer;
+
+    if (matches) {
+      const mimeType = matches[1];
+      ext = mimeType === "jpeg" ? "jpg" : (mimeType === "svg+xml" ? "svg" : mimeType);
+      buffer = Buffer.from(matches[2], "base64");
+    } else {
+      buffer = Buffer.from(imageBase64, "base64");
+    }
+
+    if (buffer.length > 20 * 1024 * 1024) {
+      return res.status(400).json({ error: "A imagem excede o tamanho máximo de 20MB." });
+    }
+
+    const timestamp = Date.now();
+    const cleanBaseName = (filename || "foto")
+      .replace(/\.[^/.]+$/, "")
+      .replace(/[^a-zA-Z0-9_-]/g, "_")
+      .toLowerCase()
+      .slice(0, 40);
+    const finalFilename = `${timestamp}_${cleanBaseName}.${ext}`;
+    const filePath = path.join(photosDir, finalFilename);
+
+    fs.writeFileSync(filePath, buffer);
+    const publicUrl = `/uploads/photos/${finalFilename}`;
+
+    console.log(`📸 [ADMIN UPLOAD] Foto salva: ${publicUrl} (${Math.round(buffer.length / 1024)} KB)`);
+
+    return res.json({
+      success: true,
+      url: publicUrl,
+      sizeKb: Math.round(buffer.length / 1024),
+      filename: finalFilename
+    });
+  } catch (err: any) {
+    console.error("Error in /api/admin/upload-photo:", err);
+    return res.status(500).json({ error: "Erro ao processar e salvar foto no servidor: " + (err?.message || err) });
+  }
+});
+
 // Vite server middleware setup for development, otherwise serve production build
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {

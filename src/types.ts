@@ -71,3 +71,18 @@ export interface Booking {
   clientAddressUF?: string;
   acceptedRules?: boolean;
 }
+
+export interface SeoSettings {
+  title: string;
+  metaDescription: string;
+  keywords: string;
+  canonicalUrl: string;
+  aiOverviewText: string;
+  priceBadge: string;
+  ratingScore: number;
+  ratingCount: number;
+  locationName: string;
+  targetKeywords: string[];
+  updatedAt?: string;
+}
+

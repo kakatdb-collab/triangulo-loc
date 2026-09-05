@@ -6,6 +6,7 @@
 import { useState, useEffect } from "react";
 import { Mail, Phone, MapPin, Clock, ArrowUp, Instagram, Youtube, Compass, Star } from "lucide-react";
 import StudioMap from "./StudioMap";
+import SEOFAQ from "./SEOFAQ";
 import { db, doc, onSnapshot } from "../lib/firebase";
 import { DEFAULT_MARKETING_SETTINGS, trackConversionEvent } from "../lib/analytics";
 
@@ -37,6 +38,9 @@ export default function Footer() {
       
       <div className="max-w-7xl mx-auto px-6">
         
+        {/* Expandable FAQ Component integrated from SEO Schema.org */}
+        <SEOFAQ />
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 mb-16">
           
           {/* Col 1: Brand & Bio (4 cols) */}
