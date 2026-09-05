@@ -1618,6 +1618,9 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
         setAuthError("Login com Google cancelado. A janela foi fechada antes de concluir.");
       } else if (error.code === 'auth/popup-blocked') {
         setAuthError("O navegador bloqueou a janela pop-up do Google. Permita pop-ups para este site.");
+      } else if (error.code === 'auth/unauthorized-domain' || error.message?.includes('auth/unauthorized-domain')) {
+        const currentHostname = typeof window !== 'undefined' ? window.location.hostname : 'trianguloestudio.online';
+        setAuthError(`Domínio não autorizado pelo Firebase (${currentHostname}). Para permitir o login com o Google na hospedagem, adicione "${currentHostname}" aos Domínios Autorizados no Firebase Console (Authentication > Configurações > Domínios autorizados).`);
       } else if (error.code === 'auth/cancelled-popup-request') {
         // Ignored
       } else {
