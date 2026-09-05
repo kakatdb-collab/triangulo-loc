@@ -136,8 +136,10 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
 
   // General Tabs
   // Client: "bookings" | "write-testimonial" | "profile" | "chat"
-  // Admin: "admin-bookings" | "admin-users" | "admin-hero" | "admin-spaces" | "admin-plans" | "admin-simulator" | "admin-testimonials" | "admin-chat" | "admin-logs"
+  // Admin: "admin-bookings" | "admin-users" | "admin-hero" | "admin-spaces" | "admin-plans" | "admin-simulator" | "admin-testimonials" | "admin-chat" | "admin-logs" | "admin-seo-marketing"
   const [activeTab, setActiveTab] = useState<string>("bookings");
+  const [seoMarketingSubTab, setSeoMarketingSubTab] = useState<"seo" | "ads">("seo");
+  const [bookingsSubTab, setBookingsSubTab] = useState<"bookings" | "analytics">("bookings");
 
   // Client Dashboard Bookings & Chat states
   const [myBookings, setMyBookings] = useState<Booking[]>([]);
@@ -2073,40 +2075,33 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
                     ) : (
                       <>
                         <button
-                          onClick={() => setActiveTab("admin-analytics")}
+                          onClick={() => {
+                            setActiveTab("admin-bookings");
+                            setBookingsSubTab("bookings");
+                          }}
                           className={cn(
                             "px-4 py-3.5 border-b-2 font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5",
-                            activeTab === "admin-analytics" ? "border-brand-red text-white bg-white/[0.02]" : "border-transparent text-zinc-400 hover:text-white"
+                            (activeTab === "admin-bookings" || activeTab === "admin-analytics")
+                              ? "border-brand-red text-white bg-white/[0.02]"
+                              : "border-transparent text-zinc-400 hover:text-white"
                           )}
                         >
-                          <BarChart2 size={13} className="text-brand-red" /> Métricas & Analytics
+                          <Calendar size={13} className="text-emerald-400" />
+                          <BarChart2 size={13} className="text-brand-red -ml-0.5" />
+                          <span>Locações, Agenda & Métricas</span>
                         </button>
                         <button
-                          onClick={() => setActiveTab("admin-seo")}
+                          onClick={() => setActiveTab("admin-seo-marketing")}
                           className={cn(
                             "px-4 py-3.5 border-b-2 font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5",
-                            activeTab === "admin-seo" ? "border-amber-400 text-white bg-white/[0.02]" : "border-transparent text-zinc-400 hover:text-white"
+                            (activeTab === "admin-seo-marketing" || activeTab === "admin-seo" || activeTab === "admin-marketing")
+                              ? "border-amber-400 text-white bg-white/[0.02]"
+                              : "border-transparent text-zinc-400 hover:text-white"
                           )}
                         >
-                          <Search size={13} className="text-amber-400" /> SEO & Google / IA
-                        </button>
-                        <button
-                          onClick={() => setActiveTab("admin-marketing")}
-                          className={cn(
-                            "px-4 py-3.5 border-b-2 font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5",
-                            activeTab === "admin-marketing" ? "border-brand-red text-white bg-white/[0.02]" : "border-transparent text-zinc-400 hover:text-white"
-                          )}
-                        >
-                          <Globe size={13} className="text-cyan-400" /> Google & Meta Ads
-                        </button>
-                        <button
-                          onClick={() => setActiveTab("admin-bookings")}
-                          className={cn(
-                            "px-4 py-3.5 border-b-2 font-bold transition-all cursor-pointer whitespace-nowrap",
-                            activeTab === "admin-bookings" ? "border-brand-red text-white bg-white/[0.02]" : "border-transparent text-zinc-400 hover:text-white"
-                          )}
-                        >
-                          Locações & Agenda
+                          <Search size={13} className="text-amber-400" />
+                          <Globe size={13} className="text-cyan-400 -ml-0.5" />
+                          <span>SEO, Google & Meta Ads</span>
                         </button>
                         <button
                           onClick={() => setActiveTab("admin-users")}
@@ -2470,43 +2465,67 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
                       </div>
                     )}
 
-                    {/* ADMIN: ANALYTICS DASHBOARD */}
-                    {activeTab === "admin-analytics" && (
-                      <AdminAnalyticsDashboard bookings={allBookings} />
-                    )}
-
-                    {/* ADMIN: SEO & AI SEARCH ENGINE OPTIMIZATION CMS */}
-                    {activeTab === "admin-seo" && (
-                      <AdminSeoSettings
-                        initialSettings={seoSettings}
-                        onSave={handleSaveSeoSettings}
-                        isSaving={isSavingSeo}
-                      />
-                    )}
-
-                    {/* ADMIN: MARKETING & ADS INTEGRATION CMS */}
-                    {activeTab === "admin-marketing" && (
+                    {/* ADMIN: SEO, GOOGLE & META ADS (UNIFIED MODULE) */}
+                    {(activeTab === "admin-seo-marketing" || activeTab === "admin-seo" || activeTab === "admin-marketing") && (
                       <div className="space-y-6">
-                        <div className="bg-stone-900 border border-white/10 p-6 rounded space-y-6">
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <Globe className="text-cyan-400" size={18} />
-                              <h5 className="font-display font-bold text-xs uppercase tracking-widest text-cyan-400">
-                                Central de Integrações Google & Meta (Gerenciador de Anúncios)
-                              </h5>
-                            </div>
-                            <p className="text-zinc-400 text-xs font-sans mt-1">
-                              Configure as tags do Google Analytics 4, Google Ads Conversions, Meta Pixel (Facebook/Instagram Ads) e Google Meu Negócio para rastrear leads e otimizar campanhas de tráfego pago.
-                            </p>
-                          </div>
+                        {/* SUB-TABS SWITCHER */}
+                        <div className="flex flex-wrap items-center gap-2 p-1.5 bg-stone-900 border border-white/10 rounded-lg w-fit">
+                          <button
+                            type="button"
+                            onClick={() => setSeoMarketingSubTab("seo")}
+                            className={cn(
+                              "px-4 py-2 rounded-md font-mono text-xs font-bold flex items-center gap-2 transition-all cursor-pointer",
+                              seoMarketingSubTab === "seo"
+                                ? "bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm"
+                                : "text-zinc-400 hover:text-white hover:bg-white/5 border border-transparent"
+                            )}
+                          >
+                            <Search size={14} className="text-amber-400" />
+                            <span>Otimização SEO & Buscas por IA (Google)</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSeoMarketingSubTab("ads")}
+                            className={cn(
+                              "px-4 py-2 rounded-md font-mono text-xs font-bold flex items-center gap-2 transition-all cursor-pointer",
+                              seoMarketingSubTab === "ads"
+                                ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm"
+                                : "text-zinc-400 hover:text-white hover:bg-white/5 border border-transparent"
+                            )}
+                          >
+                            <Globe size={14} className="text-cyan-400" />
+                            <span>Google & Meta Ads (Tags & Pixel)</span>
+                          </button>
+                        </div>
 
-                          {marketingSaveSuccess && (
-                            <div className="bg-emerald-950/60 border border-emerald-500/30 text-emerald-300 p-3 rounded text-xs flex items-center gap-2">
-                              <CheckCircle2 size={16} /> {marketingSaveSuccess}
-                            </div>
-                          )}
+                        {seoMarketingSubTab === "seo" ? (
+                          <AdminSeoSettings
+                            initialSettings={seoSettings}
+                            onSave={handleSaveSeoSettings}
+                            isSaving={isSavingSeo}
+                          />
+                        ) : (
+                          <div className="space-y-6">
+                            <div className="bg-stone-900 border border-white/10 p-6 rounded space-y-6">
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <Globe className="text-cyan-400" size={18} />
+                                  <h5 className="font-display font-bold text-xs uppercase tracking-widest text-cyan-400">
+                                    Central de Integrações Google & Meta (Gerenciador de Anúncios)
+                                  </h5>
+                                </div>
+                                <p className="text-zinc-400 text-xs font-sans mt-1">
+                                  Configure as tags do Google Analytics 4, Google Ads Conversions, Meta Pixel (Facebook/Instagram Ads) e Google Meu Negócio para rastrear leads e otimizar campanhas de tráfego pago.
+                                </p>
+                              </div>
 
-                          <form onSubmit={handleSaveMarketingSettings} className="space-y-6 text-xs">
+                              {marketingSaveSuccess && (
+                                <div className="bg-emerald-950/60 border border-emerald-500/30 text-emerald-300 p-3 rounded text-xs flex items-center gap-2">
+                                  <CheckCircle2 size={16} /> {marketingSaveSuccess}
+                                </div>
+                              )}
+
+                              <form onSubmit={handleSaveMarketingSettings} className="space-y-6 text-xs">
                             {/* STATUS SUMMARY BADGES */}
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 font-mono text-[10px]">
                               <div className={cn("p-3 rounded border flex flex-col justify-between gap-1", marketingSettings.enableGA4 && marketingSettings.ga4MeasurementId?.startsWith("G-") ? "bg-emerald-950/40 border-emerald-500/30 text-emerald-300" : "bg-stone-950 border-white/10 text-zinc-500")}>
@@ -2713,78 +2732,122 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
                         </div>
                       </div>
                     )}
+                  </div>
+                )}
 
-                    {/* ADMIN: BOOKINGS AGENDA & CONTRACT VIEW */}
-                    {activeTab === "admin-bookings" && (
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                          <h5 className="font-display font-bold text-xs uppercase tracking-widest text-emerald-400">Gerenciamento Geral de Locações</h5>
-                          <span className="font-mono text-[10px] text-zinc-500 uppercase">{allBookings.length} locações gravadas</span>
+                    {/* ADMIN: LOCAÇÕES, AGENDA & MÉTRICAS (UNIFIED MODULE) */}
+                    {(activeTab === "admin-bookings" || activeTab === "admin-analytics") && (
+                      <div className="space-y-6">
+                        {/* SUB-TABS SWITCHER */}
+                        <div className="flex flex-wrap items-center gap-2 p-1.5 bg-stone-900 border border-white/10 rounded-lg w-fit">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setBookingsSubTab("bookings");
+                              setActiveTab("admin-bookings");
+                            }}
+                            className={cn(
+                              "px-4 py-2 rounded-md font-mono text-xs font-bold flex items-center gap-2 transition-all cursor-pointer",
+                              (bookingsSubTab === "bookings" && activeTab !== "admin-analytics")
+                                ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm"
+                                : "text-zinc-400 hover:text-white hover:bg-white/5 border border-transparent"
+                            )}
+                          >
+                            <Calendar size={14} className="text-emerald-400" />
+                            <span>Gerenciamento de Locações & Agenda ({allBookings.length})</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setBookingsSubTab("analytics");
+                              setActiveTab("admin-bookings");
+                            }}
+                            className={cn(
+                              "px-4 py-2 rounded-md font-mono text-xs font-bold flex items-center gap-2 transition-all cursor-pointer",
+                              (bookingsSubTab === "analytics" || activeTab === "admin-analytics")
+                                ? "bg-brand-red/20 text-white border border-brand-red/40 shadow-sm"
+                                : "text-zinc-400 hover:text-white hover:bg-white/5 border border-transparent"
+                            )}
+                          >
+                            <BarChart2 size={14} className="text-brand-red" />
+                            <span>Métricas, Faturamento & Analytics</span>
+                          </button>
                         </div>
 
-                        <div className="space-y-3">
-                          {allBookings.map((b) => (
-                            <div key={b.id} className="bg-stone-900 border border-white/10 p-4 rounded space-y-3">
-                              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-                                <div>
-                                  <span className="font-mono text-[9px] bg-white/5 text-zinc-400 px-2 py-0.5 rounded font-bold uppercase">Ref: #{b.id}</span>
-                                  <h6 className="font-bold text-sm text-white mt-1">{b.clientName} ({b.clientEmail})</h6>
-                                  <p className="text-zinc-400 text-xs font-mono">{b.spaceName} • {b.date} • {b.timeSlot} ({b.durationHours}h)</p>
-                                </div>
-                                <div className="text-right">
-                                  <span className="font-mono text-xs font-bold text-brand-red block">R$ {b.totalPrice?.toFixed(2)}</span>
-                                  <span className="text-[10px] font-mono text-emerald-400 block">{b.depositPaid ? "✅ Sinal Pago" : "🔴 Sinal Pendente"}</span>
-                                </div>
-                              </div>
-
-                              <div className="border-t border-white/5 pt-3 flex flex-wrap items-center justify-between gap-2">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="text-[10px] font-mono text-zinc-500 uppercase">Status:</span>
-                                  {["Simulada", "Pendente", "Reservada", "Concluída", "Cancelada"].map((st) => (
-                                    <button
-                                      key={st}
-                                      onClick={async () => {
-                                        await updateDoc(doc(db, "bookings", b.id), cleanFirestoreData({ status: st }));
-                                      }}
-                                      className={cn(
-                                        "text-[9px] font-mono px-2 py-0.5 rounded cursor-pointer transition-all",
-                                        b.status === st ? "bg-brand-red text-white font-bold" : "bg-stone-950 text-zinc-400 hover:text-white"
-                                      )}
-                                    >
-                                      {st}
-                                    </button>
-                                  ))}
-                                </div>
-
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <button
-                                    onClick={() => { setContractBooking(b); setIsContractOpen(true); }}
-                                    className="bg-emerald-950 hover:bg-emerald-900 text-emerald-400 border border-emerald-500/30 text-[10px] font-mono uppercase px-2.5 py-1 rounded flex items-center gap-1.5 cursor-pointer font-bold transition-all"
-                                    title="Baixar Contrato Oficial em PDF"
-                                  >
-                                    <Download size={12} className="text-emerald-400" /> Contrato PDF
-                                  </button>
-
-                                  <button
-                                    onClick={() => handleCancelBooking(b.id, b.clientName)}
-                                    className="bg-amber-950 hover:bg-amber-900 text-amber-400 border border-amber-500/30 text-[10px] font-mono uppercase px-2.5 py-1 rounded flex items-center gap-1.5 cursor-pointer font-bold transition-all"
-                                    title="Cancelar esta locação"
-                                  >
-                                    <AlertTriangle size={12} className="text-amber-400" /> Cancelar
-                                  </button>
-
-                                  <button
-                                    onClick={() => handleDeleteBooking(b.id, b.clientName)}
-                                    className="bg-red-950 hover:bg-red-900 text-red-400 border border-red-500/30 text-[10px] font-mono uppercase px-2.5 py-1 rounded flex items-center gap-1.5 cursor-pointer font-bold transition-all"
-                                    title="Excluir permanentemente esta locação"
-                                  >
-                                    <Trash2 size={12} className="text-red-400" /> Excluir
-                                  </button>
-                                </div>
-                              </div>
+                        {(bookingsSubTab === "analytics" || activeTab === "admin-analytics") ? (
+                          <AdminAnalyticsDashboard bookings={allBookings} />
+                        ) : (
+                          <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                              <h5 className="font-display font-bold text-xs uppercase tracking-widest text-emerald-400">Gerenciamento Geral de Locações</h5>
+                              <span className="font-mono text-[10px] text-zinc-500 uppercase">{allBookings.length} locações gravadas</span>
                             </div>
-                          ))}
-                        </div>
+
+                            <div className="space-y-3">
+                              {allBookings.map((b) => (
+                                <div key={b.id} className="bg-stone-900 border border-white/10 p-4 rounded space-y-3">
+                                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                                    <div>
+                                      <span className="font-mono text-[9px] bg-white/5 text-zinc-400 px-2 py-0.5 rounded font-bold uppercase">Ref: #{b.id}</span>
+                                      <h6 className="font-bold text-sm text-white mt-1">{b.clientName} ({b.clientEmail})</h6>
+                                      <p className="text-zinc-400 text-xs font-mono">{b.spaceName} • {b.date} • {b.timeSlot} ({b.durationHours}h)</p>
+                                    </div>
+                                    <div className="text-right">
+                                      <span className="font-mono text-xs font-bold text-brand-red block">R$ {b.totalPrice?.toFixed(2)}</span>
+                                      <span className="text-[10px] font-mono text-emerald-400 block">{b.depositPaid ? "✅ Sinal Pago" : "🔴 Sinal Pendente"}</span>
+                                    </div>
+                                  </div>
+
+                                  <div className="border-t border-white/5 pt-3 flex flex-wrap items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="text-[10px] font-mono text-zinc-500 uppercase">Status:</span>
+                                      {["Simulada", "Pendente", "Reservada", "Concluída", "Cancelada"].map((st) => (
+                                        <button
+                                          key={st}
+                                          onClick={async () => {
+                                            await updateDoc(doc(db, "bookings", b.id), cleanFirestoreData({ status: st }));
+                                          }}
+                                          className={cn(
+                                            "text-[9px] font-mono px-2 py-0.5 rounded cursor-pointer transition-all",
+                                            b.status === st ? "bg-brand-red text-white font-bold" : "bg-stone-950 text-zinc-400 hover:text-white"
+                                          )}
+                                        >
+                                          {st}
+                                        </button>
+                                      ))}
+                                    </div>
+
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <button
+                                        onClick={() => { setContractBooking(b); setIsContractOpen(true); }}
+                                        className="bg-emerald-950 hover:bg-emerald-900 text-emerald-400 border border-emerald-500/30 text-[10px] font-mono uppercase px-2.5 py-1 rounded flex items-center gap-1.5 cursor-pointer font-bold transition-all"
+                                        title="Baixar Contrato Oficial em PDF"
+                                      >
+                                        <Download size={12} className="text-emerald-400" /> Contrato PDF
+                                      </button>
+
+                                      <button
+                                        onClick={() => handleCancelBooking(b.id, b.clientName)}
+                                        className="bg-amber-950 hover:bg-amber-900 text-amber-400 border border-amber-500/30 text-[10px] font-mono uppercase px-2.5 py-1 rounded flex items-center gap-1.5 cursor-pointer font-bold transition-all"
+                                        title="Cancelar esta locação"
+                                      >
+                                        <AlertTriangle size={12} className="text-amber-400" /> Cancelar
+                                      </button>
+
+                                      <button
+                                        onClick={() => handleDeleteBooking(b.id, b.clientName)}
+                                        className="bg-red-950 hover:bg-red-900 text-red-400 border border-red-500/30 text-[10px] font-mono uppercase px-2.5 py-1 rounded flex items-center gap-1.5 cursor-pointer font-bold transition-all"
+                                        title="Excluir permanentemente esta locação"
+                                      >
+                                        <Trash2 size={12} className="text-red-400" /> Excluir
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
 
