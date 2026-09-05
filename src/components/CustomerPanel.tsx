@@ -78,29 +78,22 @@ async function compressImageFile(file: File, maxWidth = 1200, quality = 0.78): P
 }
 
 /**
- * Uploads image to server static storage (/api/admin/upload-photo) or falls back
- * to ultra-optimized compact WebP data URL to guarantee zero document bloat in Firestore.
+ * Uploads image using Firebase Storage (global CDN) or falls back
+ * to ultra-optimized compact WebP data URL to guarantee portability across any domain.
  */
-async function uploadOrProcessPhoto(file: File, maxWidth = 1200, quality = 0.78): Promise<string> {
-  const compressedBase64 = await compressImageFile(file, maxWidth, quality);
+async function uploadOrProcessPhoto(file: File, maxWidth = 1000, quality = 0.76): Promise<string> {
+  // 1. Try Firebase Storage if authenticated & available (accessible from any domain)
   try {
-    const response = await fetch("/api/admin/upload-photo", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        imageBase64: compressedBase64,
-        filename: file.name
-      })
-    });
-    if (response.ok) {
-      const result = await response.json();
-      if (result.url) {
-        return result.url;
-      }
+    const storageUrl = await uploadFileToStorage(file, "spaces_gallery");
+    if (storageUrl && (storageUrl.startsWith("http://") || storageUrl.startsWith("https://"))) {
+      return storageUrl;
     }
   } catch (err) {
-    console.warn("Upload para /api/admin/upload-photo indisponível, usando WebP local otimizado:", err);
+    console.warn("Upload via Firebase Storage indisponível, usando fallback otimizado:", err);
   }
+
+  // 2. Compress to compact WebP
+  const compressedBase64 = await compressImageFile(file, maxWidth, quality);
   return compressedBase64;
 }
 
@@ -1171,9 +1164,20 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
     }
   };
 
-  const handleResetGalleryToDefault = () => {
-    if (window.confirm("Deseja restaurar a galeria para as 28 fotos originais do estúdio?")) {
+  const handleResetGalleryToDefault = async () => {
+    if (window.confirm("Deseja restaurar a galeria para as 28 fotos originais do estúdio? Todas as fotos voltarão para os links oficiais de alta definição.")) {
       setSpacePhotos(DEFAULT_PRISMA_PHOTOS);
+      try {
+        await setDoc(doc(db, "site_settings", "spaces_gallery"), cleanFirestoreData({
+          photos: DEFAULT_PRISMA_PHOTOS,
+          updatedAt: new Date().toISOString()
+        }));
+        setGallerySaveMsg("✅ Galeria restaurada com sucesso para as 28 fotos originais em alta definição!");
+        setTimeout(() => setGallerySaveMsg(""), 5000);
+      } catch (err: any) {
+        console.error("Erro ao salvar restauração de galeria:", err);
+        setGallerySaveMsg("❌ Erro ao salvar restauração: " + (err?.message || "Falha de conexão"));
+      }
     }
   };
 
@@ -3690,7 +3694,10 @@ export default function CustomerPanel({ isOpen, onClose, initialBookingToPay, on
                                         loading="lazy"
                                         onError={(e) => {
                                           const target = e.currentTarget;
-                                          target.src = "https://images.unsplash.com/photo-1598488035139-bdbb2231ce04?w=400&q=80";
+                                          const fallback = DEFAULT_PRISMA_PHOTOS[origIdx]?.url || "https://images.unsplash.com/photo-1598488035139-bdbb2231ce04?w=400&q=80";
+                                          if (target.src !== fallback) {
+                                            target.src = fallback;
+                                          }
                                         }}
                                       />
                                     ) : (

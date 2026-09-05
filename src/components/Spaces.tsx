@@ -261,6 +261,13 @@ export default function Spaces({ onSelectSpace }: SpacesProps) {
                   referrerPolicy="no-referrer"
                   decoding="async"
                   className="w-full h-full object-cover"
+                  onError={(e) => {
+                    const target = e.currentTarget;
+                    const fallback = DEFAULT_PRISMA_PHOTOS[currentPhotoIdx]?.url || "https://images.unsplash.com/photo-1598488035139-bdbb2231ce04?w=1200&q=80";
+                    if (target.src !== fallback) {
+                      target.src = fallback;
+                    }
+                  }}
                 />
               </AnimatePresence>
               
@@ -336,6 +343,13 @@ export default function Spaces({ onSelectSpace }: SpacesProps) {
                     decoding="async"
                     referrerPolicy="no-referrer"
                     className="w-full h-full object-cover"
+                    onError={(e) => {
+                      const target = e.currentTarget;
+                      const fallback = DEFAULT_PRISMA_PHOTOS[index]?.url || "https://images.unsplash.com/photo-1598488035139-bdbb2231ce04?w=400&q=80";
+                      if (target.src !== fallback) {
+                        target.src = fallback;
+                      }
+                    }}
                   />
                   {currentPhotoIdx === index && (
                     <div className="absolute inset-0 bg-[#d93838]/10 flex items-center justify-center">
