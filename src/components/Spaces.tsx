@@ -25,115 +25,115 @@ interface SpacesProps {
 
 export const DEFAULT_PRISMA_PHOTOS = [
   {
-    url: "https://triangulofotoclub.com.br/locacao/estudio/01-Escritorio.webp",
+    url: "/images/gallery/01-escritorio.webp",
     caption: "Escritório elegante e versátil, multiuso para reunião e trabalho.",
   },
   {
-    url: "https://triangulofotoclub.com.br/locacao/estudio/02-Escritorio.webp",
+    url: "/images/gallery/02-escritorio.webp",
     caption: "Escritório elegante e versátil, multiuso para reunião e trabalho.",
   },
   {
-    url: "https://triangulofotoclub.com.br/locacao/estudio/03-Fundo_Infinito_ciclorama.webp",
+    url: "/images/gallery/03-fundo-infinito.webp",
     caption: "Fundo Infinito No Formato U todo em madeira",
   },
   {
-    url: "https://triangulofotoclub.com.br/locacao/estudio/04-Fundo_Infinito_ciclorama%20%2B%20sofa%20capitone.webp",
+    url: "/images/gallery/04-fundo-infinito-sofa.webp",
     caption: "Fundo Infinito No Formato U todo em madeira (Sofa Capitone)",
   },
   {
-    url: "https://triangulofotoclub.com.br/locacao/estudio/05-cenario_estudio.webp",
+    url: "/images/gallery/05-cenario-estudio.webp",
     caption: "Cenário moderno com poltrona Capitone.",
   },
   {
-    url: "https://triangulofotoclub.com.br/locacao/estudio/06-Cenario_estudio.webp",
+    url: "/images/gallery/06-cenario-estudio.webp",
     caption: "Cenário moderno.",
   },
   {
-    url: "https://triangulofotoclub.com.br/locacao/estudio/07-acessorios.webp",
+    url: "/images/gallery/07-acessorios.webp",
     caption: "Acessórios",
   },
   {
-    url: "https://triangulofotoclub.com.br/locacao/estudio/08-Grua.webp",
+    url: "/images/gallery/08-grua.webp",
     caption: "Girafa e Octabox",
   },
   {
-    url: "https://triangulofotoclub.com.br/locacao/estudio/09-Tochas_Godox_SK_400.webp",
+    url: "/images/gallery/09-tochas-godox.webp",
     caption: "3 Tochas Godox SK 400, com radio Flash universal.",
   },
   {
-    url: "https://triangulofotoclub.com.br/locacao/estudio/10-Fundos_coloridos.webp",
+    url: "/images/gallery/10-fundos-coloridos.webp",
     caption: "Opções de Fundo Colorido",
   },
   {
-    url: "https://triangulofotoclub.com.br/locacao/estudio/11-Quarto%201%20.webp",
+    url: "/images/gallery/11-quarto-vintage.webp",
     caption: "Quarto Cênico Decoração Vintage com um toque industrial.",
   },
   {
-    url: "https://triangulofotoclub.com.br/locacao/estudio/12-Quarto%202.webp",
+    url: "/images/gallery/12-sofa-poltrona.webp",
     caption: "Sofa e Poltrona Capitone",
   },
   {
-    url: "https://triangulofotoclub.com.br/locacao/estudio/13-Quarto%203.webp",
+    url: "/images/gallery/13-quarto-vintage-3.webp",
     caption: "Quarto Cênico Decoração Vintage com um toque industrial.",
   },
   {
-    url: "https://triangulofotoclub.com.br/locacao/estudio/14-Quarto%204.webp",
+    url: "/images/gallery/14-cama-vintage.webp",
     caption: "Cama com cabeceira vintage",
   },
   {
-    url: "https://triangulofotoclub.com.br/locacao/estudio/15-Quarto%205.webp",
+    url: "/images/gallery/15-quarto-vintage-5.webp",
     caption: "Quarto Cênico Decoração Vintage com um toque industrial.",
   },
   {
-    url: "https://triangulofotoclub.com.br/locacao/estudio/16-Quarto%20%205.webp",
+    url: "/images/gallery/16-quarto-vintage-6.webp",
     caption: "Quarto Cênico Decoração Vintage com um toque industrial.",
   },
   {
-    url: "https://triangulofotoclub.com.br/locacao/estudio/17-Quarto%20%206.webp",
+    url: "/images/gallery/17-banheira-espelho.webp",
     caption: "Banheira e espelho",
   },
   {
-    url: "https://triangulofotoclub.com.br/locacao/estudio/18-Quarto%207.webp",
+    url: "/images/gallery/18-banheira-espelho-2.webp",
     caption: "Banheira e espelho",
   },
   {
-    url: "https://triangulofotoclub.com.br/locacao/estudio/19-Quarto%20%208.webp",
+    url: "/images/gallery/19-banheira.webp",
     caption: "Banheira",
   },
   {
-    url: "https://triangulofotoclub.com.br/locacao/estudio/20-Quarto%20%209.webp",
+    url: "/images/gallery/20-cantinho-verde.webp",
     caption: "Cantinho Verde",
   },
   {
-    url: "https://triangulofotoclub.com.br/locacao/estudio/21-Quarto%20%2010.webp",
+    url: "/images/gallery/21-balanco-acrilico.webp",
     caption: "Balanço Acrilico",
   },
   {
-    url: "https://triangulofotoclub.com.br/locacao/estudio/22%20-%20Quarto%20%2012.webp",
+    url: "/images/gallery/22-penteadeira-vintage.webp",
     caption: "Penteadeira Vintage, Poltrona Capitone",
   },
   {
-    url: "https://triangulofotoclub.com.br/locacao/estudio/23%20-%20Quarto%20%2013.webp",
+    url: "/images/gallery/23-poltrona-capitone.webp",
     caption: "Poltrona Capitone",
   },
   {
-    url: "https://triangulofotoclub.com.br/locacao/estudio/24%20-%20Varamda%2001.webp",
+    url: "/images/gallery/24-varanda-centro.webp",
     caption: "Varanda com linda Vista pro Centro Velho de - SP",
   },
   {
-    url: "https://triangulofotoclub.com.br/locacao/estudio/25%20-%20Varamda%20.webp",
+    url: "/images/gallery/25-banheira-ferro.webp",
     caption: "Banheira vintage de Ferro Fundido",
   },
   {
-    url: "https://triangulofotoclub.com.br/locacao/estudio/26%20-%20Varamda%20.webp",
+    url: "/images/gallery/26-varanda-viaduto.webp",
     caption: "Varanda Com linda Vista para o Viaduto Santa Efigenia.",
   },
   {
-    url: "https://triangulofotoclub.com.br/locacao/estudio/27%20-%20Varamda%20.webp",
+    url: "/images/gallery/27-varanda-viaduto-2.webp",
     caption: "Varanda Com linda Vista para o Viaduto Santa Efigenia.",
   },
   {
-    url: "https://triangulofotoclub.com.br/locacao/estudio/28%20-%20Varamda%20.webp",
+    url: "/images/gallery/28-varanda-rede.webp",
     caption: "Varanda com Rede",
   }
 ];
@@ -263,7 +263,7 @@ export default function Spaces({ onSelectSpace }: SpacesProps) {
                   className="w-full h-full object-cover"
                   onError={(e) => {
                     const target = e.currentTarget;
-                    const fallback = DEFAULT_PRISMA_PHOTOS[currentPhotoIdx]?.url || "https://images.unsplash.com/photo-1598488035139-bdbb2231ce04?w=1200&q=80";
+                    const fallback = DEFAULT_PRISMA_PHOTOS[currentPhotoIdx]?.url || "/images/gallery/01-escritorio.webp";
                     if (target.src !== fallback) {
                       target.src = fallback;
                     }
@@ -345,7 +345,7 @@ export default function Spaces({ onSelectSpace }: SpacesProps) {
                     className="w-full h-full object-cover"
                     onError={(e) => {
                       const target = e.currentTarget;
-                      const fallback = DEFAULT_PRISMA_PHOTOS[index]?.url || "https://images.unsplash.com/photo-1598488035139-bdbb2231ce04?w=400&q=80";
+                      const fallback = DEFAULT_PRISMA_PHOTOS[index]?.url || "/images/gallery/01-escritorio.webp";
                       if (target.src !== fallback) {
                         target.src = fallback;
                       }

@@ -12,7 +12,7 @@ import triangleConcept from "./assets/images/triangle_concept_1779639657792.png"
 export const ASSETS = {
   studioHero,
   triangleConcept,
-  prismaStudioFirst: "https://triangulofotoclub.com.br/locacao/estudio/01-Escritorio.webp",
+  prismaStudioFirst: "/images/gallery/01-escritorio.webp",
 };
 
 export const STUDIO_SPACES: StudioSpace[] = [

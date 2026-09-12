@@ -206,6 +206,13 @@ export default function Hero() {
               referrerPolicy="no-referrer"
               fetchPriority="high"
               className="w-full h-full object-cover opacity-75 filter brightness-90 saturate-[1.1] transition-all duration-1000"
+              onError={(e) => {
+                const target = e.currentTarget;
+                const fallback = "/images/gallery/03-fundo-infinito.webp";
+                if (target.src !== fallback) {
+                  target.src = fallback;
+                }
+              }}
             />
           </motion.picture>
         </AnimatePresence>

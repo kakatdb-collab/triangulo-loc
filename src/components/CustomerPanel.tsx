@@ -78,22 +78,53 @@ async function compressImageFile(file: File, maxWidth = 1200, quality = 0.78): P
 }
 
 /**
- * Uploads image using Firebase Storage (global CDN) or falls back
- * to ultra-optimized compact WebP data URL to guarantee portability across any domain.
+ * Uploads image permanently stored in the Firestore database (site_media) with local disk caching,
+ * ensuring media is never corrupted or deleted without explicit manual admin action.
  */
-async function uploadOrProcessPhoto(file: File, maxWidth = 1000, quality = 0.76): Promise<string> {
-  // 1. Try Firebase Storage if authenticated & available (accessible from any domain)
+async function uploadOrProcessPhoto(file: File, maxWidth = 1200, quality = 0.80): Promise<string> {
+  // 1. Compress to optimized WebP
+  const compressedBase64 = await compressImageFile(file, maxWidth, quality);
+
+  // 2. Try saving permanently via /api/admin/upload-photo (saves to Firestore site_media + server disk)
   try {
-    const storageUrl = await uploadFileToStorage(file, "spaces_gallery");
-    if (storageUrl && (storageUrl.startsWith("http://") || storageUrl.startsWith("https://"))) {
-      return storageUrl;
+    const res = await fetch("/api/admin/upload-photo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        imageBase64: compressedBase64,
+        filename: file.name
+      })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.url) {
+        return data.url;
+      }
     }
   } catch (err) {
-    console.warn("Upload via Firebase Storage indisponível, usando fallback otimizado:", err);
+    console.warn("Upload via /api/admin/upload-photo indisponível, gravando direto no Firestore:", err);
   }
 
-  // 2. Compress to compact WebP
-  const compressedBase64 = await compressImageFile(file, maxWidth, quality);
+  // 3. Fallback: Save directly to Firestore site_media collection
+  try {
+    const timestamp = Date.now();
+    const cleanName = file.name.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 30);
+    const mediaId = `media_${timestamp}_${cleanName}`;
+    await setDoc(doc(db, "site_media", mediaId), {
+      id: mediaId,
+      filename: file.name,
+      mimeType: "image/webp",
+      dataUrl: compressedBase64,
+      permanent: true,
+      category: "client_upload",
+      createdAt: new Date().toISOString()
+    });
+    return `/api/media/${mediaId}`;
+  } catch (err) {
+    console.warn("Erro no fallback direto do Firestore:", err);
+  }
+
+  // 4. Return compressed dataUrl if server and firestore offline
   return compressedBase64;
 }
 

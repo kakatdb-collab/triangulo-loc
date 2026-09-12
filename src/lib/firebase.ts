@@ -94,6 +94,7 @@ export const storage = storageInstance;
  * Uploads a file to Firebase Storage (Plano Spark Gratuito) or converts to Data URL fallback.
  */
 export async function uploadFileToStorage(file: File, pathFolder = "uploads"): Promise<string> {
+  // 1. Try Firebase Storage if bucket is configured and accessible
   try {
     if (storage) {
       const timestamp = Date.now();
@@ -104,16 +105,61 @@ export async function uploadFileToStorage(file: File, pathFolder = "uploads"): P
       return downloadUrl;
     }
   } catch (error) {
-    console.warn("Erro no upload para Firebase Storage, utilizando fallback de arquivo:", error);
+    console.warn("Firebase Storage indisponível/não autorizado, persistindo no Banco de Dados Firestore:", error);
   }
 
-  // Fallback seguro em Data URL se o Storage do Firebase não estiver habilitado no projeto
-  return new Promise((resolve, reject) => {
+  // 2. Read file as Data URL
+  const dataUrl: string = await new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
-    reader.onerror = (err) => reject(new Error("Falha ao ler o arquivo selecionado."));
+    reader.onerror = () => reject(new Error("Falha ao ler arquivo."));
     reader.readAsDataURL(file);
   });
+
+  // 3. Persist to Firestore database via /api/admin/upload-photo
+  try {
+    const res = await fetch("/api/admin/upload-photo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        imageBase64: dataUrl,
+        filename: file.name
+      })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.url) {
+        return data.url;
+      }
+    }
+  } catch (err) {
+    console.warn("Falha no upload via endpoint, salvando direto no Firestore:", err);
+  }
+
+  // 4. Save directly to Firestore collection site_media
+  try {
+    const timestamp = Date.now();
+    const cleanName = file.name.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 30);
+    const mediaId = `media_${timestamp}_${cleanName}`;
+    const dbInstance = db;
+    if (dbInstance) {
+      await setDoc(doc(dbInstance, "site_media", mediaId), {
+        id: mediaId,
+        filename: file.name,
+        mimeType: file.type || "image/jpeg",
+        dataUrl,
+        permanent: true,
+        category: pathFolder,
+        createdAt: new Date().toISOString()
+      });
+      return `/api/media/${mediaId}`;
+    }
+  } catch (err) {
+    console.warn("Falha ao salvar no Firestore direto:", err);
+  }
+
+  // 5. Ultimate fallback: Data URL
+  return dataUrl;
 }
 
 export enum OperationType {

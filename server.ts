@@ -12,7 +12,7 @@ import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
 import { jsPDF } from "jspdf";
 import { initializeApp as initFirebaseApp, getApps as getFirebaseApps } from "firebase/app";
-import { getFirestore as getFirebaseDb, doc, updateDoc, getDoc } from "firebase/firestore";
+import { getFirestore as getFirebaseDb, doc, updateDoc, getDoc, setDoc } from "firebase/firestore";
 
 dotenv.config();
 
@@ -1561,7 +1561,7 @@ const handleInfinitePayWebhook = async (req: express.Request, res: express.Respo
 app.post("/api/infinitepay/webhook", handleInfinitePayWebhook);
 app.post("/api/webhook-infinitepay", handleInfinitePayWebhook);
 
-// Static uploads directory for media assets
+// Static uploads & images directory for media assets
 const uploadsDir = path.join(process.cwd(), "public", "uploads");
 const photosDir = path.join(uploadsDir, "photos");
 if (!fs.existsSync(photosDir)) {
@@ -1569,7 +1569,118 @@ if (!fs.existsSync(photosDir)) {
 }
 app.use("/uploads", express.static(uploadsDir));
 
-// Dedicated admin image upload endpoint with compression & clean URL return
+const imagesDir = path.join(process.cwd(), "public", "images");
+if (!fs.existsSync(imagesDir)) {
+  fs.mkdirSync(imagesDir, { recursive: true });
+}
+app.use("/images", express.static(imagesDir));
+
+// Media gallery filename lookup map for immediate static resolution
+const galleryMap: Record<string, string> = {
+  gallery_01: "01-escritorio.webp",
+  gallery_02: "02-escritorio.webp",
+  gallery_03: "03-fundo-infinito.webp",
+  gallery_04: "04-fundo-infinito-sofa.webp",
+  gallery_05: "05-cenario-estudio.webp",
+  gallery_06: "06-cenario-estudio.webp",
+  gallery_07: "07-acessorios.webp",
+  gallery_08: "08-grua.webp",
+  gallery_09: "09-tochas-godox.webp",
+  gallery_10: "10-fundos-coloridos.webp",
+  gallery_11: "11-quarto-vintage.webp",
+  gallery_12: "12-sofa-poltrona.webp",
+  gallery_13: "13-quarto-vintage-3.webp",
+  gallery_14: "14-cama-vintage.webp",
+  gallery_15: "15-quarto-vintage-5.webp",
+  gallery_16: "16-quarto-vintage-6.webp",
+  gallery_17: "17-banheira-espelho.webp",
+  gallery_18: "18-banheira-espelho-2.webp",
+  gallery_19: "19-banheira.webp",
+  gallery_20: "20-cantinho-verde.webp",
+  gallery_21: "21-balanco-acrilico.webp",
+  gallery_22: "22-penteadeira-vintage.webp",
+  gallery_23: "23-poltrona-capitone.webp",
+  gallery_24: "24-varanda-centro.webp",
+  gallery_25: "25-banheira-ferro.webp",
+  gallery_26: "26-varanda-viaduto.webp",
+  gallery_27: "27-varanda-viaduto-2.webp",
+  gallery_28: "28-varanda-rede.webp",
+  hero_banner_custom: "hero_banner_custom.webp"
+};
+
+// Permanent database-backed media delivery endpoint
+app.get("/api/media/:id", async (req, res) => {
+  try {
+    const rawId = req.params.id;
+    const id = rawId.replace(/\.[a-zA-Z0-9]+$/, "");
+
+    // 1. Direct match in gallery assets
+    if (galleryMap[id]) {
+      const gPath = id === "hero_banner_custom"
+        ? path.join(process.cwd(), "public", "images", "hero", galleryMap[id])
+        : path.join(process.cwd(), "public", "images", "gallery", galleryMap[id]);
+      if (fs.existsSync(gPath)) {
+        res.setHeader("Content-Type", "image/webp");
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        return res.sendFile(gPath);
+      }
+    }
+
+    // 2. Direct match in local photos cache
+    if (fs.existsSync(photosDir)) {
+      const cached = fs.readdirSync(photosDir).find(f => f.startsWith(id));
+      if (cached) {
+        const cPath = path.join(photosDir, cached);
+        const ext = path.extname(cPath).slice(1);
+        res.setHeader("Content-Type", ext === "jpg" ? "image/jpeg" : `image/${ext}`);
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        return res.sendFile(cPath);
+      }
+    }
+
+    // 3. Fallback: Fetch directly from permanent Firestore database collection site_media
+    const db = getServerDb();
+    if (db) {
+      const snap = await getDoc(doc(db, "site_media", id));
+      if (snap.exists()) {
+        const data = snap.data();
+        const dataUrl = data.dataUrl || data.base64;
+        if (dataUrl) {
+          const matches = dataUrl.match(/^data:image\/([a-zA-Z0-9+]+);base64,(.+)$/);
+          const mimeType = matches ? `image/${matches[1]}` : (data.mimeType || "image/webp");
+          const b64 = matches ? matches[2] : dataUrl;
+          const buffer = Buffer.from(b64, "base64");
+
+          // Save to local cache directory for lightning-fast future loads
+          try {
+            const ext = mimeType.split("/")[1] || "webp";
+            fs.writeFileSync(path.join(photosDir, `${id}.${ext}`), buffer);
+          } catch (_) {}
+
+          res.setHeader("Content-Type", mimeType);
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+          return res.send(buffer);
+        }
+      }
+    }
+
+    // Default fallback to 01-escritorio.webp if not found
+    const fallbackPath = path.join(process.cwd(), "public", "images", "gallery", "01-escritorio.webp");
+    if (fs.existsSync(fallbackPath)) {
+      res.setHeader("Content-Type", "image/webp");
+      return res.sendFile(fallbackPath);
+    }
+
+    return res.status(404).send("Media not found");
+  } catch (err: any) {
+    console.error("Error in /api/media/:id:", err);
+    return res.status(500).send("Error reading media");
+  }
+});
+
+// Dedicated admin image upload endpoint with dual persistence:
+// 1. Local disk cache
+// 2. Permanent Firestore Database (site_media) so photos NEVER disappear
 app.post("/api/admin/upload-photo", async (req, res) => {
   try {
     const { imageBase64, filename } = req.body;
@@ -1599,17 +1710,44 @@ app.post("/api/admin/upload-photo", async (req, res) => {
       .replace(/[^a-zA-Z0-9_-]/g, "_")
       .toLowerCase()
       .slice(0, 40);
+    const mediaId = `media_${timestamp}_${cleanBaseName}`;
     const finalFilename = `${timestamp}_${cleanBaseName}.${ext}`;
     const filePath = path.join(photosDir, finalFilename);
 
+    // 1. Write to local server photosDir
     fs.writeFileSync(filePath, buffer);
-    const publicUrl = `/uploads/photos/${finalFilename}`;
 
-    console.log(`📸 [ADMIN UPLOAD] Foto salva: ${publicUrl} (${Math.round(buffer.length / 1024)} KB)`);
+    // 2. Write permanently to Firestore database collection site_media
+    const db = getServerDb();
+    if (db) {
+      try {
+        const fullDataUrl = matches ? imageBase64 : `data:image/${ext};base64,${imageBase64}`;
+        await setDoc(doc(db, "site_media", mediaId), {
+          id: mediaId,
+          filename: finalFilename,
+          mimeType: `image/${ext}`,
+          sizeBytes: buffer.length,
+          dataUrl: fullDataUrl,
+          permanent: true,
+          category: "admin_upload",
+          createdAt: new Date().toISOString()
+        });
+        console.log(`💾 [DATABASE STORAGE] Imagem gravada permanentemente no Firestore: site_media/${mediaId}`);
+      } catch (dbErr) {
+        console.error("Warning: Could not save to Firestore site_media:", dbErr);
+      }
+    }
+
+    const permanentUrl = `/api/media/${mediaId}`;
+    const publicUploadUrl = `/uploads/photos/${finalFilename}`;
+
+    console.log(`📸 [ADMIN UPLOAD] Foto salva com sucesso: ${permanentUrl} (${Math.round(buffer.length / 1024)} KB)`);
 
     return res.json({
       success: true,
-      url: publicUrl,
+      url: permanentUrl,
+      localUrl: publicUploadUrl,
+      id: mediaId,
       sizeKb: Math.round(buffer.length / 1024),
       filename: finalFilename
     });

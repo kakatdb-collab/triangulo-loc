@@ -105,5 +105,14 @@ service cloud.firestore {
       allow read, create: if true;
       allow update, delete: if true;
     }
+
+    // Rules for Site Media & Permanent Photo Storage
+    match /site_media/{mediaId} {
+      allow read, write: if true;
+    }
+
+    match /stored_media/{mediaId} {
+      allow read, write: if true;
+    }
   }
 }
